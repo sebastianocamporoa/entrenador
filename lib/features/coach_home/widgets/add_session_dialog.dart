@@ -13,7 +13,6 @@ class AddSessionDialog extends StatefulWidget {
 class _AddSessionDialogState extends State<AddSessionDialog> {
   final _repo = TrainingSessionsRepo();
   final _formKey = GlobalKey<FormState>();
-
   final supa = Supabase.instance.client;
 
   DateTime _date = DateTime.now();
@@ -24,6 +23,9 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
   bool _saving = false;
   String? _selectedClient;
   List<Map<String, dynamic>> _clients = [];
+
+  // ⚠️ Mensaje de error para horas
+  String? _timeError;
 
   @override
   void initState() {
@@ -36,7 +38,6 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
       final user = supa.auth.currentUser;
       if (user == null) return;
 
-      // 🔹 Cargamos clientes asociados al entrenador desde client_trainer
       final res = await supa
           .from('client_trainer')
           .select('client_id, client:client_id(name)')
@@ -44,7 +45,6 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
 
       debugPrint('Clientes asociados: $res');
 
-      // 🔹 Aseguramos que sea una lista válida
       if (res is List && res.isNotEmpty) {
         setState(() {
           _clients = res
@@ -93,24 +93,53 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+
+    final startDateTime = DateTime(
+      _date.year,
+      _date.month,
+      _date.day,
+      _startTime.hour,
+      _startTime.minute,
+    );
+    final endDateTime = DateTime(
+      _date.year,
+      _date.month,
+      _date.day,
+      _endTime.hour,
+      _endTime.minute,
+    );
+
+    setState(() => _timeError = null);
+
+    // 🔹 Validaciones visuales
+    if (startDateTime.isAfter(endDateTime)) {
+      setState(
+        () => _timeError =
+            'La hora de inicio no puede ser posterior a la hora de fin',
+      );
+      return;
+    }
+
+    if (startDateTime.isAtSameMomentAs(endDateTime)) {
+      setState(
+        () => _timeError = 'La hora de inicio y fin no pueden ser iguales',
+      );
+      return;
+    }
+
+    if (startDateTime.isBefore(DateTime.now())) {
+      setState(() => _timeError = 'No puedes agendar una sesión en el pasado');
+      return;
+    }
+
+    if (_selectedClient == null) {
+      setState(() => _timeError = 'Selecciona un cliente antes de guardar');
+      return;
+    }
+
     setState(() => _saving = true);
 
     try {
-      final startDateTime = DateTime(
-        _date.year,
-        _date.month,
-        _date.day,
-        _startTime.hour,
-        _startTime.minute,
-      );
-      final endDateTime = DateTime(
-        _date.year,
-        _date.month,
-        _date.day,
-        _endTime.hour,
-        _endTime.minute,
-      );
-
       await _repo.addSession(
         startTime: startDateTime,
         endTime: endDateTime,
@@ -183,6 +212,20 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
                   title: Text('Fin: ${_endTime.format(context)}'),
                   onTap: _pickEndTime,
                 ),
+
+                // ⚠️ Error visual de horas
+                if (_timeError != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4.0, bottom: 8.0),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        _timeError!,
+                        style: const TextStyle(color: Colors.red, fontSize: 13),
+                      ),
+                    ),
+                  ),
+
                 const SizedBox(height: 8),
 
                 // 🧍‍♂️ Cliente
