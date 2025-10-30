@@ -10,8 +10,9 @@ class ClientsPage extends StatefulWidget {
 
 class _ClientsPageState extends State<ClientsPage> {
   final api = ClientsApi();
-  final nameCtrl = TextEditingController();
+  final emailCtrl = TextEditingController();
   late Future<List<Map<String, dynamic>>> _future;
+  bool loading = false;
 
   @override
   void initState() {
@@ -20,32 +21,43 @@ class _ClientsPageState extends State<ClientsPage> {
   }
 
   Future<void> _create() async {
-    final name = nameCtrl.text.trim();
-    if (name.isEmpty) {
+    final email = emailCtrl.text.trim();
+
+    if (email.isEmpty || !email.contains('@')) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Escribe un nombre')));
+      ).showSnackBar(const SnackBar(content: Text('Ingresa un correo válido')));
       return;
     }
+
+    setState(() => loading = true);
+
     try {
-      await api.create(name: name);
-      nameCtrl.clear();
+      // 🔹 Creamos el cliente solo con el correo
+      await api.create(email: email);
+
+      emailCtrl.clear();
       setState(() {
         _future = api.list();
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Cliente agregado ✅')));
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Cliente agregado ✅')));
+      }
     } catch (e) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('No se pudo agregar: $e')));
+    } finally {
+      if (mounted) setState(() => loading = false);
     }
   }
 
   @override
   void dispose() {
-    nameCtrl.dispose();
+    emailCtrl.dispose();
     super.dispose();
   }
 
@@ -57,23 +69,24 @@ class _ClientsPageState extends State<ClientsPage> {
         children: [
           Padding(
             padding: const EdgeInsets.all(12),
-            child: Row(
+            child: Column(
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: nameCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Nombre del cliente',
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (_) =>
-                        setState(() {}), // para habilitar/deshabilitar botón
+                TextField(
+                  controller: emailCtrl,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(
+                    labelText: 'Correo del cliente',
+                    border: OutlineInputBorder(),
                   ),
                 ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: nameCtrl.text.trim().isEmpty ? null : _create,
-                  child: const Text('Agregar'),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: loading ? null : _create,
+                    icon: const Icon(Icons.person_add_alt_1),
+                    label: Text(loading ? 'Agregando...' : 'Agregar cliente'),
+                  ),
                 ),
               ],
             ),
@@ -85,18 +98,20 @@ class _ClientsPageState extends State<ClientsPage> {
                 if (!snap.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }
+
                 final items = snap.data as List<Map<String, dynamic>>;
                 if (items.isEmpty) {
                   return const Center(child: Text('Aún no hay clientes'));
                 }
+
                 return ListView.separated(
                   itemCount: items.length,
                   separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (_, i) {
                     final c = items[i];
                     return ListTile(
-                      title: Text(c['name'] ?? '—'),
-                      subtitle: Text(c['email'] ?? ''),
+                      title: Text(c['email'] ?? '—'),
+                      subtitle: Text(c['name'] ?? ''),
                       trailing: IconButton(
                         icon: const Icon(Icons.delete_outline),
                         onPressed: () async {
@@ -106,7 +121,6 @@ class _ClientsPageState extends State<ClientsPage> {
                           });
                         },
                       ),
-                      // 👉 ESTE ES EL onTap QUE PREGUNTAS
                       onTap: () async {
                         final changed = await Navigator.of(context).push<bool>(
                           MaterialPageRoute(
