@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:syncfusion_flutter_calendar/calendar.dart';
 import '../../../common/data/repositories/training_sessions_repo.dart';
+import '../../../common/data/models/training_session.dart';
 
 class AddSessionDialog extends StatefulWidget {
-  const AddSessionDialog({super.key});
+  final Appointment? existingSession; // Para edición opcional
+  const AddSessionDialog({super.key, this.existingSession});
 
   @override
   State<AddSessionDialog> createState() => _AddSessionDialogState();
@@ -40,6 +43,18 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
   void initState() {
     super.initState();
     _loadClients();
+    _prefillIfEditing();
+  }
+
+  void _prefillIfEditing() {
+    final s = widget.existingSession;
+    if (s != null) {
+      _startDate = s.startTime;
+      _endDate = s.endTime;
+      _startTime = TimeOfDay.fromDateTime(s.startTime);
+      _endTime = TimeOfDay.fromDateTime(s.endTime);
+      _noteCtrl.text = s.subject;
+    }
   }
 
   Future<void> _loadClients() async {
@@ -147,7 +162,6 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
       return;
     }
 
-    // ✅ Obtener días seleccionados
     final selectedDays = _days.entries
         .where((e) => e.value)
         .map((e) => e.key)
@@ -160,42 +174,65 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
     setState(() => _saving = true);
 
     try {
-      final sessionsToCreate = <Future>[];
-
-      for (
-        var d = _startDate;
-        !d.isAfter(_endDate);
-        d = d.add(const Duration(days: 1))
-      ) {
-        final weekdayLetter = _weekdayToLetter(d.weekday);
-        if (selectedDays.contains(weekdayLetter)) {
-          final start = DateTime(
-            d.year,
-            d.month,
-            d.day,
-            _startTime.hour,
-            _startTime.minute,
+      if (widget.existingSession != null) {
+        // 🔹 Editar sesión existente
+        final user = supa.auth.currentUser;
+        if (user == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Usuario no autenticado')),
           );
-          final end = DateTime(
-            d.year,
-            d.month,
-            d.day,
-            _endTime.hour,
-            _endTime.minute,
-          );
-
-          sessionsToCreate.add(
-            _repo.addSession(
-              startTime: start,
-              endTime: end,
-              notes: _noteCtrl.text.trim(),
-              clientId: _selectedClient,
-            ),
-          );
+          return;
         }
-      }
 
-      await Future.wait(sessionsToCreate);
+        final session = TrainingSession(
+          id: widget.existingSession!.id?.toString() ?? '',
+          trainerId: user.id.toString(), // ✅ conversión explícita
+          startTime: startDateTime,
+          endTime: endDateTime,
+          notes: _noteCtrl.text.trim(),
+          clientId: _selectedClient!,
+        );
+
+        await _repo.updateSession(session);
+      } else {
+        // 🔹 Crear múltiples sesiones nuevas
+        final sessionsToCreate = <Future>[];
+
+        for (
+          var d = _startDate;
+          !d.isAfter(_endDate);
+          d = d.add(const Duration(days: 1))
+        ) {
+          final weekdayLetter = _weekdayToLetter(d.weekday);
+          if (selectedDays.contains(weekdayLetter)) {
+            final start = DateTime(
+              d.year,
+              d.month,
+              d.day,
+              _startTime.hour,
+              _startTime.minute,
+            );
+            final end = DateTime(
+              d.year,
+              d.month,
+              d.day,
+              _endTime.hour,
+              _endTime.minute,
+            );
+
+            sessionsToCreate.add(
+              _repo.addSession(
+                startTime: start,
+                endTime: end,
+                notes: _noteCtrl.text.trim(),
+                clientId: _selectedClient,
+              ),
+            );
+          }
+        }
+
+        await Future.wait(sessionsToCreate);
+      }
 
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -258,7 +295,9 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
                   ),
                 ),
                 Text(
-                  'Nueva sesión',
+                  widget.existingSession != null
+                      ? 'Editar sesión'
+                      : 'Nueva sesión',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 16),
@@ -287,7 +326,6 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
                   onTap: _pickEndTime,
                 ),
 
-                // ⚠️ Error visual
                 if (_timeError != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 4.0, bottom: 8.0),
@@ -355,7 +393,13 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
                     onPressed: _saving ? null : _save,
                     icon: const Icon(Icons.check),
                     label: Text(
-                      _saving ? 'Agendando sesiones...' : 'Guardar sesiones',
+                      _saving
+                          ? (widget.existingSession != null
+                                ? 'Actualizando...'
+                                : 'Agendando sesiones...')
+                          : (widget.existingSession != null
+                                ? 'Guardar cambios'
+                                : 'Guardar sesiones'),
                     ),
                   ),
                 ),

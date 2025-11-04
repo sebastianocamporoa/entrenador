@@ -154,6 +154,7 @@ class _AuthGateState extends State<AuthGate> {
           .eq('auth_user_id', user.id)
           .maybeSingle();
 
+      // 👇 Solo crear si no existe, no modificar si ya está
       if (exists == null) {
         await supa.from('app_user').insert({
           'auth_user_id': user.id,
@@ -163,8 +164,8 @@ class _AuthGateState extends State<AuthGate> {
           'email': user.email,
         });
       }
-    } catch (_) {
-      // Silencioso: si RLS/trigger ya lo hizo, no es error crítico.
+    } catch (e) {
+      debugPrint('Error asegurando perfil: $e');
     }
   }
 }
@@ -224,13 +225,23 @@ class _LoginPageState extends State<LoginPage> {
       if (user != null) {
         final supa = Supabase.instance.client;
         try {
-          await supa.from('app_user').upsert({
-            'auth_user_id': user.id,
-            'role': 'client',
-            'full_name':
-                user.userMetadata?['full_name'] ?? user.email?.split('@').first,
-            'email': user.email,
-          }, onConflict: 'auth_user_id');
+          // Solo crear el registro si no existe
+          final existing = await supa
+              .from('app_user')
+              .select('role')
+              .eq('auth_user_id', user.id)
+              .maybeSingle();
+
+          if (existing == null) {
+            await supa.from('app_user').insert({
+              'auth_user_id': user.id,
+              'role': 'client',
+              'full_name':
+                  user.userMetadata?['full_name'] ??
+                  user.email?.split('@').first,
+              'email': user.email,
+            });
+          }
         } catch (_) {
           // no bloquear el flujo si falla por RLS o existe ya
         }
