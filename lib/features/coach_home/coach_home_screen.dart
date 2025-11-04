@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_calendar/calendar.dart';
 import '../clients/clients_page.dart';
@@ -32,14 +33,37 @@ class _CoachHomeScreenState extends State<CoachHomeScreen> {
     }
   }
 
+  // 🎨 Paleta de colores para las sesiones
+  final List<Color> _colors = [
+    Colors.indigo,
+    Colors.orange,
+    Colors.green,
+    Colors.purple,
+    Colors.teal,
+    Colors.pink,
+    Colors.blueGrey,
+    Colors.cyan,
+    Colors.redAccent,
+    Colors.lime,
+  ];
+
+  // 🔹 Asigna color determinístico por cliente
+  Color _getColorForClient(String? clientId) {
+    if (clientId == null) return Colors.grey.shade400;
+    final hash = clientId.hashCode;
+    final index = hash.abs() % _colors.length;
+    return _colors[index];
+  }
+
   List<Appointment> _mapToAppointments(List<TrainingSession> sessions) {
     return sessions.map((s) {
       return Appointment(
         startTime: s.startTime,
         endTime: s.endTime,
         subject: s.notes ?? (s.clientName ?? 'Sesión'),
-        color: Colors.indigo,
+        color: _getColorForClient(s.clientId),
         isAllDay: false,
+        notes: s.clientName ?? '',
       );
     }).toList();
   }
@@ -50,53 +74,81 @@ class _CoachHomeScreenState extends State<CoachHomeScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Entrenador')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // Botones principales
-          FilledButton(
-            onPressed: () => Navigator.of(
-              context,
-            ).push(MaterialPageRoute(builder: (_) => const ClientsPage())),
-            child: const Text('Ir a Clientes'),
-          ),
-          const SizedBox(height: 12),
-          FilledButton.tonal(
-            onPressed: () => Navigator.of(
-              context,
-            ).push(MaterialPageRoute(builder: (_) => const PlansListScreen())),
-            child: const Text('Planes de entrenamiento'),
-          ),
-          const SizedBox(height: 24),
-
-          // 🗓️ Calendario tipo Google Calendar
-          Text(
-            'Agenda semanal',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 600,
-            child: SfCalendar(
-              view: CalendarView.week,
-              firstDayOfWeek: 1,
-              dataSource: TrainingDataSource(appointments),
-              showDatePickerButton: true,
-              showCurrentTimeIndicator: true,
-              todayHighlightColor: Colors.indigo,
-              onTap: (details) {
-                if (details.targetElement == CalendarElement.appointment) {
-                  final session = details.appointments?.first;
-                  if (session is Appointment) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Sesión: ${session.subject}')),
-                    );
-                  }
-                }
-              },
+      body: RefreshIndicator(
+        onRefresh: _loadSessions,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            // 🔹 Botones principales
+            FilledButton(
+              onPressed: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const ClientsPage())),
+              child: const Text('Ir a Clientes'),
             ),
-          ),
-        ],
+            const SizedBox(height: 12),
+            FilledButton.tonal(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const PlansListScreen()),
+              ),
+              child: const Text('Planes de entrenamiento'),
+            ),
+            const SizedBox(height: 24),
+
+            // 🗓️ Calendario semanal
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Agenda semanal',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Actualizar calendario',
+                  onPressed: _loadSessions,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+
+            SizedBox(
+              height: 600,
+              child: SfCalendar(
+                view: CalendarView.week,
+                firstDayOfWeek: 1,
+                dataSource: TrainingDataSource(appointments),
+                showDatePickerButton: true,
+                showCurrentTimeIndicator: true,
+                todayHighlightColor: Colors.indigo,
+                appointmentTextStyle: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+                timeSlotViewSettings: const TimeSlotViewSettings(
+                  timeIntervalHeight: 60,
+                  startHour: 6,
+                  endHour: 22,
+                ),
+                onTap: (details) {
+                  if (details.targetElement == CalendarElement.appointment) {
+                    final session = details.appointments?.first;
+                    if (session is Appointment) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            '🕒 ${session.subject}\nCliente: ${session.notes}',
+                          ),
+                          duration: const Duration(seconds: 3),
+                        ),
+                      );
+                    }
+                  }
+                },
+              ),
+            ),
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
@@ -110,8 +162,7 @@ class _CoachHomeScreenState extends State<CoachHomeScreen> {
             builder: (_) => const AddSessionDialog(),
           );
           if (result == true) {
-            // 🔄 Refresca la lista del calendario si se guardó correctamente
-            _loadSessions();
+            _loadSessions(); // 🔄 Refresca la lista del calendario si se guardó correctamente
           }
         },
         child: const Icon(Icons.add),

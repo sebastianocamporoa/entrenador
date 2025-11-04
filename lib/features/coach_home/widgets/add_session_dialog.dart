@@ -15,7 +15,8 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
   final _formKey = GlobalKey<FormState>();
   final supa = Supabase.instance.client;
 
-  DateTime _date = DateTime.now();
+  DateTime _startDate = DateTime.now();
+  DateTime _endDate = DateTime.now().add(const Duration(days: 7));
   TimeOfDay _startTime = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay _endTime = const TimeOfDay(hour: 10, minute: 0);
   final _noteCtrl = TextEditingController();
@@ -24,8 +25,16 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
   String? _selectedClient;
   List<Map<String, dynamic>> _clients = [];
 
-  // ⚠️ Mensaje de error para horas
   String? _timeError;
+  final Map<String, bool> _days = {
+    'L': false,
+    'M': false,
+    'X': false,
+    'J': false,
+    'V': false,
+    'S': false,
+    'D': false,
+  };
 
   @override
   void initState() {
@@ -42,8 +51,6 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
           .from('client_trainer')
           .select('client_id, client:client_id(name)')
           .eq('trainer_id', user.id);
-
-      debugPrint('Clientes asociados: $res');
 
       if (res is List && res.isNotEmpty) {
         setState(() {
@@ -65,14 +72,24 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
     }
   }
 
-  Future<void> _pickDate() async {
+  Future<void> _pickStartDate() async {
     final result = await showDatePicker(
       context: context,
-      initialDate: _date,
+      initialDate: _startDate,
       firstDate: DateTime.now().subtract(const Duration(days: 1)),
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
-    if (result != null) setState(() => _date = result);
+    if (result != null) setState(() => _startDate = result);
+  }
+
+  Future<void> _pickEndDate() async {
+    final result = await showDatePicker(
+      context: context,
+      initialDate: _endDate,
+      firstDate: _startDate,
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (result != null) setState(() => _endDate = result);
   }
 
   Future<void> _pickStartTime() async {
@@ -93,25 +110,28 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+    setState(() => _timeError = null);
+
+    if (_selectedClient == null) {
+      setState(() => _timeError = 'Selecciona un cliente');
+      return;
+    }
 
     final startDateTime = DateTime(
-      _date.year,
-      _date.month,
-      _date.day,
+      _startDate.year,
+      _startDate.month,
+      _startDate.day,
       _startTime.hour,
       _startTime.minute,
     );
     final endDateTime = DateTime(
-      _date.year,
-      _date.month,
-      _date.day,
+      _startDate.year,
+      _startDate.month,
+      _startDate.day,
       _endTime.hour,
       _endTime.minute,
     );
 
-    setState(() => _timeError = null);
-
-    // 🔹 Validaciones visuales
     if (startDateTime.isAfter(endDateTime)) {
       setState(
         () => _timeError =
@@ -120,32 +140,62 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
       return;
     }
 
-    if (startDateTime.isAtSameMomentAs(endDateTime)) {
+    if (_endDate.isBefore(_startDate)) {
       setState(
-        () => _timeError = 'La hora de inicio y fin no pueden ser iguales',
+        () => _timeError = 'La fecha final no puede ser anterior a la inicial',
       );
       return;
     }
 
-    if (startDateTime.isBefore(DateTime.now())) {
-      setState(() => _timeError = 'No puedes agendar una sesión en el pasado');
-      return;
-    }
-
-    if (_selectedClient == null) {
-      setState(() => _timeError = 'Selecciona un cliente antes de guardar');
+    // ✅ Obtener días seleccionados
+    final selectedDays = _days.entries
+        .where((e) => e.value)
+        .map((e) => e.key)
+        .toList();
+    if (selectedDays.isEmpty) {
+      setState(() => _timeError = 'Selecciona al menos un día de la semana');
       return;
     }
 
     setState(() => _saving = true);
 
     try {
-      await _repo.addSession(
-        startTime: startDateTime,
-        endTime: endDateTime,
-        notes: _noteCtrl.text.trim(),
-        clientId: _selectedClient,
-      );
+      final sessionsToCreate = <Future>[];
+
+      for (
+        var d = _startDate;
+        !d.isAfter(_endDate);
+        d = d.add(const Duration(days: 1))
+      ) {
+        final weekdayLetter = _weekdayToLetter(d.weekday);
+        if (selectedDays.contains(weekdayLetter)) {
+          final start = DateTime(
+            d.year,
+            d.month,
+            d.day,
+            _startTime.hour,
+            _startTime.minute,
+          );
+          final end = DateTime(
+            d.year,
+            d.month,
+            d.day,
+            _endTime.hour,
+            _endTime.minute,
+          );
+
+          sessionsToCreate.add(
+            _repo.addSession(
+              startTime: start,
+              endTime: end,
+              notes: _noteCtrl.text.trim(),
+              clientId: _selectedClient,
+            ),
+          );
+        }
+      }
+
+      await Future.wait(sessionsToCreate);
 
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -156,6 +206,27 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
       }
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  String _weekdayToLetter(int weekday) {
+    switch (weekday) {
+      case DateTime.monday:
+        return 'L';
+      case DateTime.tuesday:
+        return 'M';
+      case DateTime.wednesday:
+        return 'X';
+      case DateTime.thursday:
+        return 'J';
+      case DateTime.friday:
+        return 'V';
+      case DateTime.saturday:
+        return 'S';
+      case DateTime.sunday:
+        return 'D';
+      default:
+        return '';
     }
   }
 
@@ -192,28 +263,31 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
                 ),
                 const SizedBox(height: 16),
 
-                // 📅 Fecha
+                // 📅 Fechas
                 ListTile(
                   leading: const Icon(Icons.calendar_today),
-                  title: Text(dateFmt.format(_date)),
-                  onTap: _pickDate,
+                  title: Text('Inicio: ${dateFmt.format(_startDate)}'),
+                  onTap: _pickStartDate,
+                ),
+                ListTile(
+                  leading: const Icon(Icons.calendar_month),
+                  title: Text('Fin: ${dateFmt.format(_endDate)}'),
+                  onTap: _pickEndDate,
                 ),
 
-                // ⏰ Hora inicio
+                // ⏰ Horas
                 ListTile(
                   leading: const Icon(Icons.access_time),
-                  title: Text('Inicio: ${_startTime.format(context)}'),
+                  title: Text('Hora inicio: ${_startTime.format(context)}'),
                   onTap: _pickStartTime,
                 ),
-
-                // ⏰ Hora fin
                 ListTile(
                   leading: const Icon(Icons.access_time_filled),
-                  title: Text('Fin: ${_endTime.format(context)}'),
+                  title: Text('Hora fin: ${_endTime.format(context)}'),
                   onTap: _pickEndTime,
                 ),
 
-                // ⚠️ Error visual de horas
+                // ⚠️ Error visual
                 if (_timeError != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 4.0, bottom: 8.0),
@@ -226,9 +300,20 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
                     ),
                   ),
 
-                const SizedBox(height: 8),
+                // 🗓️ Días de la semana
+                Wrap(
+                  spacing: 6,
+                  children: _days.keys.map((d) {
+                    return FilterChip(
+                      label: Text(d),
+                      selected: _days[d]!,
+                      onSelected: (v) => setState(() => _days[d] = v),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 12),
 
-                // 🧍‍♂️ Cliente
+                // 🧍 Cliente
                 DropdownButtonFormField<String>(
                   decoration: const InputDecoration(
                     labelText: 'Cliente',
@@ -263,13 +348,15 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
                 ),
                 const SizedBox(height: 16),
 
-                // 💾 Botón guardar
+                // 💾 Botón
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: _saving ? null : _save,
                     icon: const Icon(Icons.check),
-                    label: Text(_saving ? 'Guardando...' : 'Guardar sesión'),
+                    label: Text(
+                      _saving ? 'Agendando sesiones...' : 'Guardar sesiones',
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
