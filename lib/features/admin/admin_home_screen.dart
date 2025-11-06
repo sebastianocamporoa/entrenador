@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../plans/plans_list_screen.dart';
 import 'promote_user_screen.dart';
 import 'exercises_screen.dart';
 
@@ -30,6 +31,19 @@ class AdminHomeScreen extends StatelessWidget {
               subtitle: const Text('Gestiona la librería global de ejercicios'),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const ExercisesScreen()),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.assignment),
+              title: const Text('Planes de entrenamiento'),
+              subtitle: const Text(
+                'Crea y gestiona plantillas de planes globales',
+              ),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const PlansListScreen()),
               ),
             ),
           ),

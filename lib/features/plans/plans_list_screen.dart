@@ -4,7 +4,7 @@ import '../../common/data/repositories/plans_repo.dart';
 import '../../common/data/repositories/assignments_repo.dart';
 import 'plan_editor_screen.dart';
 import 'assign_plan_screen.dart';
-import '../../common/data/models/plan.dart';
+import '../../common/data/models/training_plan.dart';
 
 class PlansListScreen extends StatefulWidget {
   const PlansListScreen({super.key});
@@ -15,7 +15,7 @@ class PlansListScreen extends StatefulWidget {
 
 class _PlansListScreenState extends State<PlansListScreen> {
   final _repo = PlansRepo();
-  late Future<List<Plan>> _future;
+  late Future<List<TrainingPlan>> _future;
 
   @override
   void initState() {
@@ -24,9 +24,7 @@ class _PlansListScreenState extends State<PlansListScreen> {
   }
 
   Future<void> _reload() async {
-    // 1) hace el trabajo async fuera de setState
     final fut = _repo.listMyPlans();
-    // 2) y luego setState síncrono
     if (!mounted) return;
     setState(() {
       _future = fut;
@@ -50,7 +48,7 @@ class _PlansListScreenState extends State<PlansListScreen> {
             TextField(
               controller: goalCtrl,
               decoration: const InputDecoration(
-                labelText: 'Objetivo (opcional)',
+                labelText: 'Objetivo o descripción (opcional)',
               ),
             ),
           ],
@@ -67,13 +65,16 @@ class _PlansListScreenState extends State<PlansListScreen> {
         ],
       ),
     );
+
     if (ok == true) {
       await _repo.add(
-        Plan(
+        TrainingPlan(
           id: 'tmp',
           trainerId: Supabase.instance.client.auth.currentUser!.id,
           name: nameCtrl.text.trim(),
-          goal: goalCtrl.text.trim().isEmpty ? null : goalCtrl.text.trim(),
+          description: goalCtrl.text.trim().isEmpty
+              ? null
+              : goalCtrl.text.trim(),
         ),
       );
       await _reload();
@@ -94,14 +95,14 @@ class _PlansListScreenState extends State<PlansListScreen> {
           IconButton(onPressed: _addPlanDialog, icon: const Icon(Icons.add)),
         ],
       ),
-      body: FutureBuilder<List<Plan>>(
+      body: FutureBuilder<List<TrainingPlan>>(
         future: _future,
         builder: (_, snap) {
           if (snap.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
           }
+
           if (snap.hasError) {
-            // Muestra el error y un botón para reintentar
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -129,18 +130,20 @@ class _PlansListScreenState extends State<PlansListScreen> {
               ),
             );
           }
-          final items = snap.data ?? const <Plan>[];
+
+          final items = snap.data ?? const <TrainingPlan>[];
           if (items.isEmpty) {
             return const Center(
               child: Text('Aún no tienes planes. Crea uno con +'),
             );
           }
+
           return ListView.separated(
             itemBuilder: (_, i) {
               final p = items[i];
               return ListTile(
                 title: Text(p.name),
-                subtitle: Text(p.goal ?? '-'),
+                subtitle: Text(p.description ?? '-'),
                 onTap: () {
                   Navigator.of(context)
                       .push(
