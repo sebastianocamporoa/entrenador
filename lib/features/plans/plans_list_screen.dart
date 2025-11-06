@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../common/data/repositories/plans_repo.dart';
-import '../../common/data/repositories/assignments_repo.dart';
-import 'plan_editor_screen.dart';
-import 'assign_plan_screen.dart';
 import '../../common/data/models/training_plan.dart';
+import '../admin/plan_detail_screen.dart';
 
 class PlansListScreen extends StatefulWidget {
   const PlansListScreen({super.key});
@@ -20,36 +18,35 @@ class _PlansListScreenState extends State<PlansListScreen> {
   @override
   void initState() {
     super.initState();
-    _future = _repo.listMyPlans();
+    _future = _repo.listGlobalPlans();
   }
 
   Future<void> _reload() async {
-    final fut = _repo.listMyPlans();
+    final newFuture = _repo.listGlobalPlans();
     if (!mounted) return;
     setState(() {
-      _future = fut;
+      _future = newFuture;
     });
   }
 
   Future<void> _addPlanDialog() async {
     final nameCtrl = TextEditingController();
     final goalCtrl = TextEditingController();
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Nuevo plan'),
+        title: const Text('Nuevo plan global'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: nameCtrl,
-              decoration: const InputDecoration(labelText: 'Nombre'),
+              decoration: const InputDecoration(labelText: 'Nombre del plan'),
             ),
             TextField(
               controller: goalCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Objetivo o descripción (opcional)',
-              ),
+              decoration: const InputDecoration(labelText: 'Objetivo'),
             ),
           ],
         ),
@@ -67,16 +64,14 @@ class _PlansListScreenState extends State<PlansListScreen> {
     );
 
     if (ok == true) {
-      await _repo.add(
-        TrainingPlan(
-          id: 'tmp',
-          trainerId: Supabase.instance.client.auth.currentUser!.id,
-          name: nameCtrl.text.trim(),
-          description: goalCtrl.text.trim().isEmpty
-              ? null
-              : goalCtrl.text.trim(),
-        ),
+      final plan = TrainingPlan(
+        id: 'tmp',
+        trainerId: Supabase.instance.client.auth.currentUser!.id,
+        name: nameCtrl.text.trim(),
+        goal: goalCtrl.text.trim(),
+        scope: 'global',
       );
+      await _repo.addGlobalPlan(plan);
       await _reload();
     }
   }
@@ -90,7 +85,7 @@ class _PlansListScreenState extends State<PlansListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Mis planes'),
+        title: const Text('Planes de entrenamiento'),
         actions: [
           IconButton(onPressed: _addPlanDialog, icon: const Icon(Icons.add)),
         ],
@@ -101,85 +96,31 @@ class _PlansListScreenState extends State<PlansListScreen> {
           if (snap.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
           }
-
           if (snap.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.error_outline,
-                      size: 48,
-                      color: Colors.redAccent,
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'No se pudieron cargar los planes.\n${snap.error}',
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 12),
-                    FilledButton.icon(
-                      onPressed: _reload,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Reintentar'),
-                    ),
-                  ],
-                ),
-              ),
-            );
+            return Center(child: Text('Error: ${snap.error}'));
           }
-
-          final items = snap.data ?? const <TrainingPlan>[];
+          final items = snap.data ?? [];
           if (items.isEmpty) {
-            return const Center(
-              child: Text('Aún no tienes planes. Crea uno con +'),
-            );
+            return const Center(child: Text('No hay planes globales todavía.'));
           }
 
           return ListView.separated(
+            itemCount: items.length,
+            separatorBuilder: (_, __) => const Divider(height: 0),
             itemBuilder: (_, i) {
               final p = items[i];
               return ListTile(
                 title: Text(p.name),
-                subtitle: Text(p.description ?? '-'),
-                onTap: () {
-                  Navigator.of(context)
-                      .push(
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              PlanEditorScreen(planId: p.id, planName: p.name),
-                        ),
-                      )
-                      .then((_) => _reload());
-                },
-                trailing: PopupMenuButton<String>(
-                  onSelected: (v) async {
-                    if (v == 'assign') {
-                      await Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              AssignPlanScreen(planId: p.id, planName: p.name),
-                        ),
-                      );
-                    } else if (v == 'delete') {
-                      await _repo.remove(p.id);
-                      await _reload();
-                    }
-                  },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(
-                      value: 'assign',
-                      child: Text('Asignar a cliente'),
-                    ),
-                    PopupMenuItem(value: 'delete', child: Text('Eliminar')),
-                  ],
+                subtitle: Text(p.goal ?? 'Sin objetivo'),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => PlanDetailScreen(plan: p)),
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () => _deletePlan(p.id),
                 ),
               );
             },
-            separatorBuilder: (_, __) => const Divider(height: 0),
-            itemCount: items.length,
           );
         },
       ),

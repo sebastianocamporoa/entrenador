@@ -1,38 +1,30 @@
 class TrainingPlan {
   final String id;
+  final String trainerId;
   final String name;
-  final String? description;
-  final bool isGlobal;
-  final String? trainerId;
-  final DateTime? createdAt;
+  final String? goal;
+  final String scope;
 
   TrainingPlan({
     required this.id,
+    required this.trainerId,
     required this.name,
-    this.description,
-    this.isGlobal = false,
-    this.trainerId,
-    this.createdAt,
+    this.goal,
+    required this.scope,
   });
 
-  factory TrainingPlan.fromMap(Map<String, dynamic> m) => TrainingPlan(
-    id: m['id'],
-    name: m['name'],
-    description: m['description'],
-    isGlobal: m['is_global'] ?? false,
-    trainerId: m['trainer_id'],
-    createdAt: m['created_at'] != null ? DateTime.parse(m['created_at']) : null,
+  factory TrainingPlan.fromMap(Map<String, dynamic> map) => TrainingPlan(
+    id: map['id'] ?? '',
+    trainerId: map['trainer_id'] ?? '',
+    name: map['name'] ?? '',
+    goal: map['goal'],
+    scope: map['scope'] ?? 'coach',
   );
 
-  Map<String, dynamic> toInsert({
-    required String name,
-    String? description,
-    bool isGlobal = false,
-    String? trainerId,
-  }) => {
-    'name': name,
-    'description': description,
-    'is_global': isGlobal,
+  Map<String, dynamic> toInsert() => {
     'trainer_id': trainerId,
+    'name': name,
+    'goal': goal,
+    'scope': scope,
   };
 }

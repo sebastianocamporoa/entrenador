@@ -2,51 +2,41 @@ class TrainingPlanExercise {
   final String id;
   final String planId;
   final String exerciseId;
+  final int? repetitions;
   final int? sets;
-  final int? repetitions; // 🔹 alias más claro que reps
-  final int? restSeconds; // 🔹 tiempo de descanso entre series
+  final int? restSeconds;
   final String? notes;
-  final int? order;
   final String? exerciseName;
 
   TrainingPlanExercise({
     required this.id,
     required this.planId,
     required this.exerciseId,
-    this.sets,
     this.repetitions,
+    this.sets,
     this.restSeconds,
     this.notes,
-    this.order,
     this.exerciseName,
   });
 
-  factory TrainingPlanExercise.fromMap(Map<String, dynamic> m) {
-    return TrainingPlanExercise(
-      id: m['id'] ?? '',
-      planId: m['plan_id'] ?? '',
-      exerciseId: m['exercise_id'] ?? '',
-      sets: m['sets'],
-      repetitions: m['repetitions'] ?? m['reps'], // compatibilidad vieja
-      restSeconds: m['rest_seconds'],
-      notes: m['notes'],
-      order: m['order'],
-      exerciseName: m['exercise'] != null
-          ? m['exercise']['name']
-          : m['exercise_name'],
-    );
-  }
+  factory TrainingPlanExercise.fromMap(Map<String, dynamic> m) =>
+      TrainingPlanExercise(
+        id: m['id'],
+        planId: m['plan_id'],
+        exerciseId: m['exercise_id'],
+        repetitions: m['repetitions'],
+        sets: m['sets'],
+        restSeconds: m['rest_seconds'],
+        notes: m['notes'],
+        exerciseName: m['exercise']?['name'], // join con exercise.name
+      );
 
-  Map<String, dynamic> toMap() {
-    return {
-      if (id.isNotEmpty) 'id': id,
-      'plan_id': planId,
-      'exercise_id': exerciseId,
-      'sets': sets,
-      'repetitions': repetitions,
-      'rest_seconds': restSeconds,
-      'notes': notes,
-      'order': order,
-    };
-  }
+  Map<String, dynamic> toMap() => {
+    'plan_id': planId,
+    'exercise_id': exerciseId,
+    'repetitions': repetitions,
+    'sets': sets,
+    'rest_seconds': restSeconds,
+    'notes': notes,
+  };
 }

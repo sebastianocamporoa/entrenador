@@ -17,12 +17,12 @@ class _PlansScreenState extends State<PlansScreen> {
   @override
   void initState() {
     super.initState();
-    _future = _repo.listAll();
+    _future = _repo.listGlobalPlans(); // ✅ usamos el método correcto
   }
 
   Future<void> _reload() async {
     setState(() {
-      _future = _repo.listAll();
+      _future = _repo.listGlobalPlans();
     });
   }
 
@@ -33,7 +33,7 @@ class _PlansScreenState extends State<PlansScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Nuevo plan de entrenamiento'),
+        title: const Text('Nuevo plan global'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -46,7 +46,7 @@ class _PlansScreenState extends State<PlansScreen> {
               TextField(
                 controller: descCtrl,
                 decoration: const InputDecoration(
-                  labelText: 'Descripción (opcional)',
+                  labelText: 'Objetivo (opcional)',
                 ),
                 maxLines: 2,
               ),
@@ -68,12 +68,14 @@ class _PlansScreenState extends State<PlansScreen> {
 
     if (ok == true) {
       try {
-        await _repo.addGlobal(
-          nameCtrl.text.trim(),
-          description: descCtrl.text.trim().isEmpty
-              ? null
-              : descCtrl.text.trim(),
+        final plan = TrainingPlan(
+          id: 'tmp',
+          trainerId: 'admin',
+          name: nameCtrl.text.trim(),
+          goal: descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
+          scope: 'global',
         );
+        await _repo.addGlobalPlan(plan); // ✅ método actualizado
         if (mounted) {
           ScaffoldMessenger.of(
             context,
@@ -111,7 +113,7 @@ class _PlansScreenState extends State<PlansScreen> {
     );
 
     if (confirm == true) {
-      await _repo.removePlan(id);
+      await _repo.remove(id); // ✅ coincide con el repositorio actual
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -153,16 +155,12 @@ class _PlansScreenState extends State<PlansScreen> {
               final p = plans[i];
               return ListTile(
                 title: Text(p.name),
-                subtitle: Text(
-                  (p.isGlobal ? '🌍 Global' : '👨‍🏫 Coach') +
-                      (p.description != null ? ' · ${p.description}' : ''),
-                ),
+                subtitle: Text(p.goal ?? 'Sin objetivo'),
                 trailing: IconButton(
                   icon: const Icon(Icons.delete_outline),
                   onPressed: () => _removePlan(p.id),
                 ),
                 onTap: () async {
-                  // Navega a detalle del plan (ejercicios dentro del plan)
                   await Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => PlanDetailScreen(plan: p),

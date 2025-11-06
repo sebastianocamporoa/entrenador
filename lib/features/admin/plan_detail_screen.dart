@@ -1,5 +1,5 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../common/data/models/training_plan.dart';
 import '../../common/data/models/training_plan_exercise.dart';
 import '../../common/data/models/exercise.dart';
@@ -17,7 +17,6 @@ class PlanDetailScreen extends StatefulWidget {
 class _PlanDetailScreenState extends State<PlanDetailScreen> {
   final _repo = PlansRepo();
   final _exRepo = ExercisesRepo();
-
   late Future<List<TrainingPlanExercise>> _future;
 
   @override
@@ -27,23 +26,69 @@ class _PlanDetailScreenState extends State<PlanDetailScreen> {
   }
 
   Future<void> _reload() async {
-    setState(() => _future = _repo.getExercises(widget.plan.id));
+    final newFuture = _repo.getExercises(widget.plan.id); // ejecuta async fuera
+    if (!mounted) return;
+    setState(() {
+      _future = newFuture; // actualiza sin async dentro
+    });
   }
 
   Future<void> _addExercise() async {
     final allExercises = await _exRepo.listAllVisible();
+
+    // Agrupamos los ejercicios por grupo muscular
+    final grouped = <String, List<Exercise>>{};
+    for (final ex in allExercises) {
+      final key = ex.muscleGroup?.toUpperCase() ?? 'OTROS';
+      grouped.putIfAbsent(key, () => []).add(ex);
+    }
+
     final selected = await showDialog<Exercise>(
       context: context,
-      builder: (_) => SimpleDialog(
+      builder: (_) => AlertDialog(
         title: const Text('Seleccionar ejercicio'),
-        children: allExercises
-            .map(
-              (e) => SimpleDialogOption(
-                onPressed: () => Navigator.pop(context, e),
-                child: Text(e.name),
-              ),
-            )
-            .toList(),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: grouped.entries.map((entry) {
+                final groupName = entry.key;
+                final exercises = entry.value;
+
+                return ExpansionTile(
+                  title: Text(
+                    groupName,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  children: exercises
+                      .map(
+                        (e) => ListTile(
+                          title: Text(e.name),
+                          subtitle: e.videoUrl != null
+                              ? Text(
+                                  e.videoUrl!,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.blueGrey,
+                                  ),
+                                )
+                              : null,
+                          onTap: () => Navigator.pop(context, e),
+                        ),
+                      )
+                      .toList(),
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+        ],
       ),
     );
 
@@ -73,7 +118,9 @@ class _PlanDetailScreenState extends State<PlanDetailScreen> {
             ),
             TextField(
               controller: restCtrl,
-              decoration: const InputDecoration(labelText: 'Descanso (seg)'),
+              decoration: const InputDecoration(
+                labelText: 'Descanso (segundos)',
+              ),
               keyboardType: TextInputType.number,
             ),
             TextField(
@@ -100,16 +147,11 @@ class _PlanDetailScreenState extends State<PlanDetailScreen> {
         id: 'tmp',
         planId: widget.plan.id,
         exerciseId: selected.id,
-        repetitions: int.tryParse(
-          repsCtrl.text.trim().isEmpty ? '0' : repsCtrl.text,
-        ),
-        sets: int.tryParse(setsCtrl.text.trim().isEmpty ? '0' : setsCtrl.text),
-        restSeconds: int.tryParse(
-          restCtrl.text.trim().isEmpty ? '0' : restCtrl.text,
-        ),
+        repetitions: int.tryParse(repsCtrl.text) ?? 0,
+        sets: int.tryParse(setsCtrl.text) ?? 0,
+        restSeconds: int.tryParse(restCtrl.text) ?? 0,
         notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
       );
-
       await _repo.addExercises(widget.plan.id, [ex]);
       _reload();
     }
@@ -135,13 +177,11 @@ class _PlanDetailScreenState extends State<PlanDetailScreen> {
       body: FutureBuilder<List<TrainingPlanExercise>>(
         future: _future,
         builder: (context, snap) {
-          if (!snap.hasData) {
+          if (!snap.hasData)
             return const Center(child: CircularProgressIndicator());
-          }
           final items = snap.data!;
-          if (items.isEmpty) {
+          if (items.isEmpty)
             return const Center(child: Text('No hay ejercicios en este plan.'));
-          }
 
           return ListView.separated(
             itemCount: items.length,
@@ -149,9 +189,9 @@ class _PlanDetailScreenState extends State<PlanDetailScreen> {
             itemBuilder: (_, i) {
               final e = items[i];
               return ListTile(
-                title: Text('Ejercicio: ${e.exerciseId}'),
+                title: Text(e.exerciseName ?? 'Ejercicio'),
                 subtitle: Text(
-                  'Series: ${e.sets ?? '-'} · Reps: ${e.repetitions ?? '-'} · Descanso: ${e.restSeconds ?? '-'}s',
+                  'Series: ${e.sets} · Reps: ${e.repetitions} · Descanso: ${e.restSeconds}s',
                 ),
                 trailing: IconButton(
                   icon: const Icon(Icons.delete_outline),
