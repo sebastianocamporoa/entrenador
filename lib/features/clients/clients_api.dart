@@ -3,68 +3,32 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class ClientsApi {
   final _db = Supabase.instance.client;
 
+  /// 🔹 Devuelve la lista de clientes asociados al entrenador actual.
+  /// Ya no permite crear, actualizar ni eliminar.
   Future<List<Map<String, dynamic>>> list() async {
-    final uid = _db.auth.currentUser!.id;
+    final uid = _db.auth.currentUser?.id;
+    if (uid == null) return [];
 
     final res = await _db
         .from('client_trainer')
-        .select('client_id, client:client_id(name, email, phone, goal, sex)')
+        .select(
+          'client_id, client:client_id(name, email, phone, goal, sex, is_active)',
+        )
         .eq('trainer_id', uid);
 
     return List<Map<String, dynamic>>.from(
-      res.map(
-        (e) => {
+      res.map((e) {
+        final c = e['client'] ?? {};
+        return {
           'id': e['client_id'],
-          'name': e['client']?['name'] ?? '—',
-          'email': e['client']?['email'],
-          'phone': e['client']?['phone'],
-          'goal': e['client']?['goal'],
-          'sex': e['client']?['sex'],
-        },
-      ),
+          'name': c['name'] ?? '—',
+          'email': c['email'],
+          'phone': c['phone'],
+          'goal': c['goal'],
+          'sex': c['sex'],
+          'is_active': c['is_active'] ?? true,
+        };
+      }),
     );
-  }
-
-  Future<void> create({required String email}) async {
-    final uid = _db.auth.currentUser!.id; // entrenador actual
-    final cleanEmail = email.trim().toLowerCase();
-
-    // 🔍 Verificar si ya existe ese correo
-    final exists = await _db
-        .from('clients')
-        .select('id')
-        .eq('email', cleanEmail)
-        .maybeSingle();
-
-    if (exists != null) {
-      throw Exception('Ya existe un cliente con ese correo');
-    }
-
-    // 🆕 Crear cliente
-    final inserted = await _db
-        .from('clients')
-        .insert({
-          'trainer_id': uid,
-          'email': cleanEmail,
-          'name': cleanEmail.split('@').first,
-        })
-        .select('id')
-        .single();
-
-    final clientId = inserted['id'] as String;
-
-    // 🔗 Insertar también en client_trainer
-    await _db.from('client_trainer').insert({
-      'trainer_id': uid,
-      'client_id': clientId,
-    });
-  }
-
-  Future<void> remove(String id) async {
-    await _db.from('clients').delete().eq('id', id);
-  }
-
-  Future<void> update(String id, Map<String, dynamic> fields) async {
-    await _db.from('clients').update(fields).eq('id', id);
   }
 }

@@ -1,166 +1,45 @@
 import 'package:flutter/material.dart';
-import 'clients_api.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-class ClientDetailPage extends StatefulWidget {
-  final Map<String, dynamic> client; // viene desde la lista
+/// Vista de detalle de un cliente (coach: lectura en datos/progreso; edición SOLO en planes)
+class ClientDetailPage extends StatelessWidget {
+  final Map<String, dynamic> client;
+
   const ClientDetailPage({super.key, required this.client});
 
   @override
-  State<ClientDetailPage> createState() => _ClientDetailPageState();
-}
+  Widget build(BuildContext context) {
+    final c = client;
 
-class _ClientDetailPageState extends State<ClientDetailPage> {
-  final api = ClientsApi();
-  late Map<String, dynamic> c;
-
-  @override
-  void initState() {
-    super.initState();
-    c = Map<String, dynamic>.from(widget.client);
-  }
-
-  Future<void> _edit() async {
-    final nameCtrl = TextEditingController(text: c['name'] ?? '');
-    final emailCtrl = TextEditingController(text: c['email'] ?? '');
-    final phoneCtrl = TextEditingController(text: c['phone'] ?? '');
-    final goalCtrl = TextEditingController(text: c['goal'] ?? '');
-    String? sex = c['sex']; // 'M', 'F', 'O'
-    bool isActive = (c['is_active'] ?? true) as bool;
-
-    final formKey = GlobalKey<FormState>();
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Editar cliente'),
-        content: Form(
-          key: formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Nombre'),
-                  validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Requerido' : null,
-                ),
-                TextFormField(
-                  controller: emailCtrl,
-                  decoration: const InputDecoration(labelText: 'Email'),
-                  keyboardType: TextInputType.emailAddress,
-                ),
-                TextFormField(
-                  controller: phoneCtrl,
-                  decoration: const InputDecoration(labelText: 'Teléfono'),
-                  keyboardType: TextInputType.phone,
-                ),
-                TextFormField(
-                  controller: goalCtrl,
-                  decoration: const InputDecoration(labelText: 'Objetivo'),
-                ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  value: sex,
-                  decoration: const InputDecoration(labelText: 'Sexo'),
-                  items: const [
-                    DropdownMenuItem(value: 'M', child: Text('Masculino')),
-                    DropdownMenuItem(value: 'F', child: Text('Femenino')),
-                    DropdownMenuItem(value: 'O', child: Text('Otro')),
-                  ],
-                  onChanged: (v) => sex = v,
-                ),
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Activo'),
-                  value: isActive,
-                  onChanged: (v) => setState(() => isActive = v),
-                ),
-              ],
-            ),
+    return DefaultTabController(
+      length: 3,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(c['name'] ?? 'Cliente'),
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: 'Datos'),
+              Tab(text: 'Planes'),
+              Tab(text: 'Progreso'),
+            ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              if (!formKey.currentState!.validate()) return;
-              // Actualiza en Supabase
-              await api.update(c['id'], {
-                'name': nameCtrl.text.trim(),
-                'email': emailCtrl.text.trim().isEmpty
-                    ? null
-                    : emailCtrl.text.trim(),
-                'phone': phoneCtrl.text.trim().isEmpty
-                    ? null
-                    : phoneCtrl.text.trim(),
-                'goal': goalCtrl.text.trim().isEmpty
-                    ? null
-                    : goalCtrl.text.trim(),
-                'sex': sex,
-                'is_active': isActive,
-              });
-              // Refresca estado local
-              setState(() {
-                c['name'] = nameCtrl.text.trim();
-                c['email'] = emailCtrl.text.trim().isEmpty
-                    ? null
-                    : emailCtrl.text.trim();
-                c['phone'] = phoneCtrl.text.trim().isEmpty
-                    ? null
-                    : phoneCtrl.text.trim();
-                c['goal'] = goalCtrl.text.trim().isEmpty
-                    ? null
-                    : goalCtrl.text.trim();
-                c['sex'] = sex;
-                c['is_active'] = isActive;
-              });
-              if (context.mounted) Navigator.pop(context, true);
-            },
-            child: const Text('Guardar'),
-          ),
-        ],
+        body: TabBarView(
+          children: [
+            _DatosTab(c: c),
+            _PlanesTab(clientId: c['id'], clientName: c['name'] ?? 'Cliente'),
+            _ProgresoTab(clientId: c['id']),
+          ],
+        ),
       ),
     );
-
-    if (result == true && mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Cliente actualizado ✅')));
-    }
   }
+}
 
-  Future<void> _confirmDelete() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Eliminar cliente'),
-        content: const Text('Esta acción no se puede deshacer.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Eliminar'),
-          ),
-        ],
-      ),
-    );
-    if (ok == true) {
-      await api.remove(c['id']);
-      if (!mounted) return;
-      Navigator.pop(context, true); // volvemos a la lista para refrescar
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Cliente eliminado 🗑️')));
-    }
-  }
+/// 🔹 Tab 1: Datos del cliente (solo lectura)
+class _DatosTab extends StatelessWidget {
+  final Map<String, dynamic> c;
+  const _DatosTab({required this.c});
 
   String _sexLabel(String? s) {
     switch (s) {
@@ -177,41 +56,298 @@ class _ClientDetailPageState extends State<ClientDetailPage> {
 
   @override
   Widget build(BuildContext context) {
-    final chips = <Widget>[];
-    chips.add(
-      Chip(label: Text(c['is_active'] == true ? 'Activo' : 'Inactivo')),
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _Tile(label: 'Email', value: c['email']),
+        _Tile(label: 'Teléfono', value: c['phone']),
+        _Tile(label: 'Objetivo', value: c['goal']),
+        _Tile(label: 'Sexo', value: _sexLabel(c['sex'])),
+        _Tile(
+          label: 'Estado',
+          value: (c['is_active'] ?? true) ? 'Activo' : 'Inactivo',
+        ),
+      ],
     );
-    if (c['sex'] != null) chips.add(Chip(label: Text(_sexLabel(c['sex']))));
+  }
+}
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(c['name'] ?? 'Cliente'),
+/// 🔹 Tab 2: Planes asignados al cliente (coach puede asignar y quitar)
+class _PlanesTab extends StatefulWidget {
+  final String clientId;
+  final String clientName;
+  const _PlanesTab({required this.clientId, required this.clientName});
+
+  @override
+  State<_PlanesTab> createState() => _PlanesTabState();
+}
+
+class _PlanesTabState extends State<_PlanesTab> {
+  final _db = Supabase.instance.client;
+  late Future<List<Map<String, dynamic>>> _future;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _loadAssignedPlans();
+  }
+
+  Future<List<Map<String, dynamic>>> _loadAssignedPlans() async {
+    final data = await _db
+        .from('client_plan') // ✅ tabla corregida
+        .select('id, start_date, is_active, plan:plan_id(id, name, goal)')
+        .eq('client_id', widget.clientId)
+        .order('start_date', ascending: false);
+
+    return List<Map<String, dynamic>>.from(
+      data.map((e) {
+        final p = e['plan'] ?? {};
+        return {
+          'assignment_id': e['id'],
+          'plan_id': p['id'],
+          'name': p['name'] ?? 'Plan',
+          'goal': p['goal'],
+          'is_active': e['is_active'] ?? true,
+        };
+      }),
+    );
+  }
+
+  Future<void> _assignPlanFlow() async {
+    final coachId = _db.auth.currentUser?.id;
+    if (coachId == null) return;
+
+    // 🔹 1) Traer planes del coach desde training_plan
+    final plans = await _db
+        .from('training_plan')
+        .select('id, name, goal, scope, trainer_id')
+        .or('scope.eq.global,trainer_id.eq.$coachId')
+        .order('created_at', ascending: false);
+
+    if (!mounted) return;
+
+    // 🔹 2) Mostrar selector
+    final selected = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => _AssignPlanSheet(
+        plans: List<Map<String, dynamic>>.from(plans),
+        clientName: widget.clientName,
+      ),
+    );
+
+    if (selected == null) return;
+
+    // 🔹 3) Insertar relación cliente-plan
+    setState(() => _busy = true);
+    try {
+      await _db.from('client_plan').insert({
+        'client_id': widget.clientId,
+        'plan_id': selected['id'],
+        'start_date': DateTime.now().toIso8601String(),
+        'is_active': true,
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Plan asignado ✅')));
+      setState(() => _future = _loadAssignedPlans());
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('No se pudo asignar: $e')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _unassignPlan(String assignmentId) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Quitar plan'),
+        content: const Text('¿Deseas quitar este plan del cliente?'),
         actions: [
-          IconButton(icon: const Icon(Icons.edit), onPressed: _edit),
-          IconButton(
-            icon: const Icon(Icons.delete_outline),
-            onPressed: _confirmDelete,
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Quitar'),
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Wrap(spacing: 8, runSpacing: 8, children: chips),
-          const SizedBox(height: 12),
-          _Tile(label: 'Email', value: c['email']),
-          _Tile(label: 'Teléfono', value: c['phone']),
-          _Tile(label: 'Objetivo', value: c['goal']),
-          const Divider(height: 32),
-          const Text(
-            'Próximo: Mediciones y Fotos',
-            style: TextStyle(fontWeight: FontWeight.w600),
+    );
+    if (ok != true) return;
+
+    setState(() => _busy = true);
+    try {
+      await _db.from('client_plan').delete().eq('id', assignmentId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Plan quitado 🗑️')));
+      setState(() => _future = _loadAssignedPlans());
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('No se pudo quitar: $e')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        FutureBuilder<List<Map<String, dynamic>>>(
+          future: _future,
+          builder: (context, snap) {
+            if (snap.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snap.hasError) {
+              return Center(child: Text('Error: ${snap.error}'));
+            }
+            final items = snap.data ?? [];
+            if (items.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('Sin planes asignados'),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: _busy ? null : _assignPlanFlow,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Asignar plan'),
+                    ),
+                  ],
+                ),
+              );
+            }
+            return RefreshIndicator(
+              onRefresh: () async =>
+                  setState(() => _future = _loadAssignedPlans()),
+              child: ListView.separated(
+                padding: const EdgeInsets.only(bottom: 88),
+                itemCount: items.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (_, i) {
+                  final p = items[i];
+                  return ListTile(
+                    title: Text(p['name'] ?? 'Plan'),
+                    subtitle: Text(p['goal'] ?? '—'),
+                    trailing: IconButton(
+                      tooltip: 'Quitar plan',
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: _busy
+                          ? null
+                          : () => _unassignPlan(p['assignment_id'] as String),
+                    ),
+                  );
+                },
+              ),
+            );
+          },
+        ),
+        Positioned(
+          right: 16,
+          bottom: 16,
+          child: FloatingActionButton.extended(
+            onPressed: _busy ? null : _assignPlanFlow,
+            icon: const Icon(Icons.add),
+            label: const Text('Asignar plan'),
           ),
-          const SizedBox(height: 8),
-          const Text(
-            'Aquí pondremos pestañas: Datos · Mediciones · Fotos · Nutrición · Notas',
-          ),
-        ],
+        ),
+      ],
+    );
+  }
+}
+
+class _AssignPlanSheet extends StatelessWidget {
+  final List<Map<String, dynamic>> plans;
+  final String clientName;
+  const _AssignPlanSheet({required this.plans, required this.clientName});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.6,
+        minChildSize: 0.4,
+        maxChildSize: 0.9,
+        builder: (_, controller) {
+          return Material(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            child: Column(
+              children: [
+                const SizedBox(height: 12),
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade400,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Asignar plan a $clientName',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: ListView.builder(
+                    controller: controller,
+                    itemCount: plans.length,
+                    itemBuilder: (_, i) {
+                      final p = plans[i];
+                      return ListTile(
+                        title: Text(p['name'] ?? 'Plan'),
+                        subtitle: Text((p['goal'] ?? '').toString()),
+                        onTap: () => Navigator.pop(context, p),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ProgresoTab extends StatelessWidget {
+  final String clientId;
+  const _ProgresoTab({required this.clientId});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Text(
+        'Progreso del cliente (solo lectura)',
+        style: TextStyle(color: Colors.grey),
       ),
     );
   }
@@ -220,6 +356,7 @@ class _ClientDetailPageState extends State<ClientDetailPage> {
 class _Tile extends StatelessWidget {
   final String label;
   final String? value;
+
   const _Tile({required this.label, required this.value});
 
   @override

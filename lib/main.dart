@@ -12,14 +12,12 @@ import 'features/admin/admin_home_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Recomendado: pasar credenciales por --dart-define
   const supaUrl = String.fromEnvironment(
     'SUPABASE_URL',
     defaultValue: 'https://vvvyopzfmjyqjnxhtjkv.supabase.co',
   );
   const supaAnon = String.fromEnvironment(
     'SUPABASE_ANON_KEY',
-    // ⚠️ Puedes borrar el defaultValue en prod y usar solo --dart-define
     defaultValue:
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2dnlvcHpmbWp5cWpueGh0amt2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk3MjExMTgsImV4cCI6MjA3NTI5NzExOH0.Zhaec_J__SAsg55cG-szjiXLClBZzHbNVaeUgHeNyAc',
   );
@@ -37,7 +35,123 @@ class EntrenadorApp extends StatelessWidget {
       title: 'Entrenador',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.indigo),
-      home: const AuthGate(),
+      home: const SplashScreen(),
+    );
+  }
+}
+
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+  late final Animation<double> _opacity;
+  late final Animation<double> _scale;
+  late final Animation<double> _lineMove;
+  final Color _accent = const Color(0xFFBF5AF2);
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 3500),
+    );
+
+    _opacity = CurvedAnimation(
+      parent: _c,
+      curve: const Interval(0.2, 1.0, curve: Curves.easeOut),
+    );
+    _scale = CurvedAnimation(
+      parent: _c,
+      curve: const Interval(0.3, 1.0, curve: Curves.easeOutBack),
+    );
+    _lineMove = CurvedAnimation(
+      parent: _c,
+      curve: const Interval(0.0, 0.8, curve: Curves.easeOut),
+    );
+
+    _c.forward().whenComplete(() async {
+      await Future.delayed(const Duration(milliseconds: 400));
+      if (!mounted) return;
+      final session = Supabase.instance.client.auth.currentSession;
+      final next = (session == null)
+          ? const OnboardingPage()
+          : const AuthGate();
+      Navigator.of(
+        context,
+      ).pushReplacement(MaterialPageRoute(builder: (_) => next));
+    });
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0x001c1c1e),
+      body: AnimatedBuilder(
+        animation: _c,
+        builder: (context, _) {
+          final width = MediaQuery.of(context).size.width;
+          return Stack(
+            children: [
+              // Línea superior diagonal
+              Positioned(
+                top: MediaQuery.of(context).size.height * 0.35,
+                left: -width * (1 - _lineMove.value),
+                child: Transform.rotate(
+                  angle: -0.05,
+                  child: Container(
+                    width: width * 1.2,
+                    height: 1.2,
+                    color: _accent,
+                  ),
+                ),
+              ),
+              // Texto central
+              Center(
+                child: Opacity(
+                  opacity: _opacity.value,
+                  child: Transform.scale(
+                    scale: 0.9 + 0.1 * _scale.value,
+                    child: Text(
+                      'Entrenador',
+                      style: const TextStyle(
+                        color: Color(0xFFBF5AF2),
+                        fontSize: 48,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              // Línea inferior diagonal
+              Positioned(
+                bottom: MediaQuery.of(context).size.height * 0.35,
+                right: -width * (1 - _lineMove.value),
+                child: Transform.rotate(
+                  angle: -0.05,
+                  child: Container(
+                    width: width * 1.2,
+                    height: 1.2,
+                    color: _accent,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }
@@ -57,14 +171,12 @@ class _AuthGateState extends State<AuthGate> {
   @override
   void initState() {
     super.initState();
-    // Redibuja cuando cambie el estado de autenticación y asegura el perfil
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((
       state,
     ) async {
       await _ensureProfileClient();
       if (mounted) setState(() {});
     });
-    // También al iniciar si ya hay sesión
     _ensureProfileClient();
   }
 
@@ -141,7 +253,6 @@ class _AuthGateState extends State<AuthGate> {
     );
   }
 
-  /// Crea/asegura un perfil en `app_user` con rol `client` (idempotente).
   Future<void> _ensureProfileClient() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) return;
@@ -154,7 +265,6 @@ class _AuthGateState extends State<AuthGate> {
           .eq('auth_user_id', user.id)
           .maybeSingle();
 
-      // 👇 Solo crear si no existe, no modificar si ya está
       if (exists == null) {
         await supa.from('app_user').insert({
           'auth_user_id': user.id,
@@ -179,7 +289,7 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final emailCtrl = TextEditingController();
   final passCtrl = TextEditingController();
-  bool isLogin = true; // alterna entre login y registro
+  bool isLogin = true;
   bool loading = false;
   String? errorMsg;
 
@@ -193,20 +303,17 @@ class _LoginPageState extends State<LoginPage> {
       final auth = Supabase.instance.client.auth;
 
       if (isLogin) {
-        // LOGIN
         await auth.signInWithPassword(
           email: emailCtrl.text.trim(),
           password: passCtrl.text,
         );
       } else {
-        // REGISTRO
         final resp = await auth.signUp(
           email: emailCtrl.text.trim(),
           password: passCtrl.text,
           data: {'full_name': emailCtrl.text.trim().split('@').first},
         );
 
-        // Si el proyecto requiere verificación de email, NO habrá sesión aún
         if (resp.session == null) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
@@ -216,16 +323,14 @@ class _LoginPageState extends State<LoginPage> {
               ),
             ),
           );
-          return; // Nos quedamos en la pantalla de login/registro
+          return;
         }
       }
 
-      // Tras login/registro con sesión activa, asegura perfil como client (idempotente)
       final user = Supabase.instance.client.auth.currentUser;
       if (user != null) {
         final supa = Supabase.instance.client;
         try {
-          // Solo crear el registro si no existe
           final existing = await supa
               .from('app_user')
               .select('role')
@@ -242,9 +347,7 @@ class _LoginPageState extends State<LoginPage> {
               'email': user.email,
             });
           }
-        } catch (_) {
-          // no bloquear el flujo si falla por RLS o existe ya
-        }
+        } catch (_) {}
       }
     } on AuthException catch (e) {
       setState(() => errorMsg = e.message);
@@ -321,7 +424,6 @@ class _LoginPageState extends State<LoginPage> {
   }
 }
 
-// ⬇️ Útil para pruebas puntuales desde el home del coach (ya tienes ClientsPage)
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
@@ -352,4 +454,227 @@ class HomePage extends StatelessWidget {
       ),
     );
   }
+}
+
+class OnboardingPage extends StatefulWidget {
+  const OnboardingPage({super.key});
+
+  @override
+  State<OnboardingPage> createState() => _OnboardingPageState();
+}
+
+class _OnboardingPageState extends State<OnboardingPage> {
+  final _controller = PageController();
+  int _page = 0;
+
+  final _pages = [
+    _OnboardData(
+      image: 'assets/onboard1.jpg',
+      title: 'Conecta con tu entrenador',
+      subtitle: 'Empieza tu transformación hoy',
+    ),
+    _OnboardData(
+      image: 'assets/onboard2.jpg',
+      title: 'Planes hechos para ti',
+      subtitle: 'Entrena con propósito y constancia',
+    ),
+    _OnboardData(
+      image: 'assets/onboard3.jpg',
+      title: 'Mide tu progreso',
+      subtitle: 'Ve tus resultados y supera tus límites',
+      showButton: true,
+    ),
+  ];
+
+  void _next() {
+    if (_page < _pages.length - 1) {
+      _controller.nextPage(
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeOut,
+      );
+    } else {
+      Navigator.of(
+        context,
+      ).pushReplacement(MaterialPageRoute(builder: (_) => const LoginPage()));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = const Color(0xFFBF5AF2);
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF111111),
+      body: Stack(
+        alignment: Alignment.bottomCenter,
+        children: [
+          PageView.builder(
+            controller: _controller,
+            onPageChanged: (i) => setState(() => _page = i),
+            itemCount: _pages.length,
+            itemBuilder: (_, i) => _OnboardSlide(data: _pages[i]),
+          ),
+          Positioned(
+            bottom: 70, // 🔹 Subido un poco (antes era 40)
+            child: Row(
+              children: List.generate(
+                _pages.length,
+                (i) => AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  width: i == _page ? 52 : 25, // 🔹 Más ancho el activo
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: i == _page ? accent : Colors.grey.shade700,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          if (_pages[_page].showButton)
+            Positioned(
+              bottom: 120,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: accent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(50),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 36,
+                    vertical: 14,
+                  ),
+                ),
+                onPressed: _next,
+                child: const Text(
+                  'Comienza ahora!',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OnboardData {
+  final String image;
+  final String title;
+  final String subtitle;
+  final bool showButton;
+
+  _OnboardData({
+    required this.image,
+    required this.title,
+    required this.subtitle,
+    this.showButton = false,
+  });
+}
+
+class _OnboardSlide extends StatelessWidget {
+  final _OnboardData data;
+  const _OnboardSlide({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    final background = const Color(0xFF1C1C1E);
+    const textColor = Color(0xFFD9D9D9);
+
+    return Container(
+      color: background,
+      child: Column(
+        children: [
+          // 🔹 Parte superior: imagen con degradado + clip diagonal
+          ClipPath(
+            clipper: _DiagonalClipper(),
+            child: Stack(
+              children: [
+                SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.6,
+                  width: double.infinity,
+                  child: Image.asset(data.image, fit: BoxFit.cover),
+                ),
+                // 🔹 Degradado inferior
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.center,
+                        colors: [
+                          background.withOpacity(0.95),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // 🔹 Parte inferior (contenido)
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+              child: Column(
+                mainAxisAlignment:
+                    MainAxisAlignment.start, // 🔹 texto más arriba
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const SizedBox(
+                    height: 20,
+                  ), // 🔹 controla cuánto sube visualmente
+                  Text(
+                    data.title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Color(0xFFD9D9D9),
+                      fontSize: 28,
+                      fontWeight: FontWeight.w500,
+                      height: 1.1,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    data.subtitle,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Color(0xFFD9D9D9),
+                      fontSize: 34,
+                      fontWeight: FontWeight.w800,
+                      height: 1.1,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DiagonalClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    final path = Path();
+    // 🔹 Empieza arriba a la izquierda
+    path.lineTo(0, size.height);
+    // 🔹 Línea diagonal: baja más del lado derecho
+    path.lineTo(size.width, size.height - 100);
+    path.lineTo(size.width, 0);
+    path.close();
+    return path;
+  }
+
+  @override
+  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
 }
