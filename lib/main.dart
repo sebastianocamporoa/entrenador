@@ -303,17 +303,30 @@ class _LoginPageState extends State<LoginPage> {
       final auth = Supabase.instance.client.auth;
 
       if (isLogin) {
-        await auth.signInWithPassword(
+        // 🔹 Iniciar sesión
+        final response = await auth.signInWithPassword(
           email: emailCtrl.text.trim(),
           password: passCtrl.text,
         );
+
+        if (response.session == null) {
+          throw AuthException('No se pudo iniciar sesión.');
+        }
+
+        if (!mounted) return;
+        // 🔹 Redirigir al AuthGate
+        Navigator.of(
+          context,
+        ).pushReplacement(MaterialPageRoute(builder: (_) => const AuthGate()));
       } else {
+        // 🔹 Registro
         final resp = await auth.signUp(
           email: emailCtrl.text.trim(),
           password: passCtrl.text,
           data: {'full_name': emailCtrl.text.trim().split('@').first},
         );
 
+        // Si el proyecto requiere verificación de correo
         if (resp.session == null) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
@@ -325,6 +338,11 @@ class _LoginPageState extends State<LoginPage> {
           );
           return;
         }
+
+        if (!mounted) return;
+        Navigator.of(
+          context,
+        ).pushReplacement(MaterialPageRoute(builder: (_) => const AuthGate()));
       }
     } on AuthException catch (e) {
       setState(() => errorMsg = e.message);
@@ -425,6 +443,17 @@ class _LoginPageState extends State<LoginPage> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
+                      if (errorMsg != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            errorMsg!,
+                            style: const TextStyle(
+                              color: Colors.redAccent,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
                       TextField(
                         controller: emailCtrl,
                         keyboardType: TextInputType.emailAddress,
