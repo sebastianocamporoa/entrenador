@@ -326,29 +326,6 @@ class _LoginPageState extends State<LoginPage> {
           return;
         }
       }
-
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user != null) {
-        final supa = Supabase.instance.client;
-        try {
-          final existing = await supa
-              .from('app_user')
-              .select('role')
-              .eq('auth_user_id', user.id)
-              .maybeSingle();
-
-          if (existing == null) {
-            await supa.from('app_user').insert({
-              'auth_user_id': user.id,
-              'role': 'client',
-              'full_name':
-                  user.userMetadata?['full_name'] ??
-                  user.email?.split('@').first,
-              'email': user.email,
-            });
-          }
-        } catch (_) {}
-      }
     } on AuthException catch (e) {
       setState(() => errorMsg = e.message);
     } catch (e) {
@@ -359,65 +336,176 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   @override
-  void dispose() {
-    emailCtrl.dispose();
-    passCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final title = isLogin ? 'Iniciar sesión' : 'Crear cuenta';
+    const accent = Color(0xFFBF5AF2);
+    const background = Color(0xFF1C1C1E);
+    const formBackground = Color(0xFF111111);
+    const textColor = Color(0xFFD9D9D9);
+
+    final title = isLogin ? 'Bienvenido de nuevo,' : 'Crea tu cuenta';
+    final subtitle = isLogin ? 'Entrena con nosotros' : 'Comienza tu viaje';
     final action = isLogin ? 'Entrar' : 'Registrarme';
 
     return Scaffold(
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+      backgroundColor: background,
+      resizeToAvoidBottomInset: true,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // 🔹 Imagen con diagonal y título
+            Stack(
               children: [
-                Text(title, style: Theme.of(context).textTheme.headlineMedium),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: emailCtrl,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: 'Email'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: passCtrl,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: 'Contraseña'),
-                ),
-                const SizedBox(height: 12),
-                if (errorMsg != null)
-                  Text(
-                    errorMsg!,
-                    style: const TextStyle(color: Colors.redAccent),
-                  ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: loading ? null : _submit,
-                    child: Text(loading ? 'Procesando...' : action),
+                ClipPath(
+                  clipper: _DiagonalClipper(),
+                  child: SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.52,
+                    width: double.infinity,
+                    child: Image.asset(
+                      'assets/login_bg.jpg',
+                      fit: BoxFit.cover,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 8),
-                TextButton(
-                  onPressed: () => setState(() => isLogin = !isLogin),
-                  child: Text(
-                    isLogin
-                        ? '¿No tienes cuenta? Crear una'
-                        : '¿Ya tienes cuenta? Inicia sesión',
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [
+                          formBackground,
+                          formBackground.withOpacity(0.7),
+                          Colors.transparent,
+                        ],
+                        stops: const [0.0, 0.25, 0.8],
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 24,
+                  bottom: 100,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 30,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 30,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-          ),
+
+            // 🔹 Solo el formulario se ajusta y hace scroll
+            Flexible(
+              child: Container(
+                width: double.infinity,
+                color: formBackground,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 24,
+                ),
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      TextField(
+                        controller: emailCtrl,
+                        keyboardType: TextInputType.emailAddress,
+                        style: const TextStyle(color: textColor),
+                        decoration: InputDecoration(
+                          labelText: 'Correo electrónico',
+                          labelStyle: const TextStyle(color: Colors.white70),
+                          enabledBorder: const UnderlineInputBorder(
+                            borderSide: BorderSide(color: Colors.white24),
+                          ),
+                          focusedBorder: const UnderlineInputBorder(
+                            borderSide: BorderSide(color: accent),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      TextField(
+                        controller: passCtrl,
+                        obscureText: true,
+                        style: const TextStyle(color: textColor),
+                        decoration: InputDecoration(
+                          labelText: 'Contraseña',
+                          labelStyle: const TextStyle(color: Colors.white70),
+                          enabledBorder: const UnderlineInputBorder(
+                            borderSide: BorderSide(color: Colors.white24),
+                          ),
+                          focusedBorder: const UnderlineInputBorder(
+                            borderSide: BorderSide(color: accent),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () {},
+                          child: const Text(
+                            '¿Olvidaste tu contraseña?',
+                            style: TextStyle(color: accent, fontSize: 14),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: accent,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(25),
+                            ),
+                          ),
+                          onPressed: loading ? null : _submit,
+                          child: Text(
+                            loading ? 'Procesando...' : action,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextButton(
+                        onPressed: () => setState(() => isLogin = !isLogin),
+                        child: Text(
+                          isLogin
+                              ? '¿No tienes cuenta? Regístrate'
+                              : '¿Ya tienes cuenta? Inicia sesión',
+                          style: const TextStyle(color: textColor),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -426,7 +514,7 @@ class _LoginPageState extends State<LoginPage> {
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
-
+  //TODO: corregir vista al abrir el teclado
   @override
   Widget build(BuildContext context) {
     return Scaffold(
