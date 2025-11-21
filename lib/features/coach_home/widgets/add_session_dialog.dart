@@ -269,10 +269,18 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
 
   @override
   Widget build(BuildContext context) {
+    const background = Color(0xFF111111);
+    const accent = Color(0xFFBF5AF2);
+    const textColor = Color(0xFFD9D9D9);
+
     final dateFmt = DateFormat('EEE d MMM', 'es_ES');
 
     return SafeArea(
-      child: Padding(
+      child: Container(
+        decoration: const BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
         padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewInsets.bottom,
           top: 16,
@@ -284,100 +292,131 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade400,
-                    borderRadius: BorderRadius.circular(4),
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade700,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
                   ),
                 ),
-                Text(
-                  widget.existingSession != null
-                      ? 'Editar sesión'
-                      : 'Nueva sesión',
-                  style: Theme.of(context).textTheme.titleLarge,
+                Center(
+                  child: Text(
+                    widget.existingSession != null
+                        ? 'Editar sesión'
+                        : 'Nueva sesión',
+                    style: const TextStyle(
+                      color: textColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 20),
 
                 // 📅 Fechas
-                ListTile(
-                  leading: const Icon(Icons.calendar_today),
-                  title: Text('Inicio: ${dateFmt.format(_startDate)}'),
-                  onTap: _pickStartDate,
+                _darkTile(
+                  Icons.calendar_today,
+                  'Inicio: ${dateFmt.format(_startDate)}',
+                  _pickStartDate,
                 ),
-                ListTile(
-                  leading: const Icon(Icons.calendar_month),
-                  title: Text('Fin: ${dateFmt.format(_endDate)}'),
-                  onTap: _pickEndDate,
+                _darkTile(
+                  Icons.calendar_month,
+                  'Fin: ${dateFmt.format(_endDate)}',
+                  _pickEndDate,
                 ),
 
                 // ⏰ Horas
-                ListTile(
-                  leading: const Icon(Icons.access_time),
-                  title: Text('Hora inicio: ${_startTime.format(context)}'),
-                  onTap: _pickStartTime,
+                _darkTile(
+                  Icons.access_time,
+                  'Hora inicio: ${_startTime.format(context)}',
+                  _pickStartTime,
                 ),
-                ListTile(
-                  leading: const Icon(Icons.access_time_filled),
-                  title: Text('Hora fin: ${_endTime.format(context)}'),
-                  onTap: _pickEndTime,
+                _darkTile(
+                  Icons.access_time_filled,
+                  'Hora fin: ${_endTime.format(context)}',
+                  _pickEndTime,
                 ),
 
                 if (_timeError != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 4.0, bottom: 8.0),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        _timeError!,
-                        style: const TextStyle(color: Colors.red, fontSize: 13),
-                      ),
+                    child: Text(
+                      _timeError!,
+                      style: const TextStyle(color: Colors.redAccent),
                     ),
                   ),
 
-                // 🗓️ Días de la semana
+                // 🗓️ Días
+                const Text(
+                  'Días de la semana',
+                  style: TextStyle(color: textColor),
+                ),
+                const SizedBox(height: 4),
                 Wrap(
                   spacing: 6,
                   children: _days.keys.map((d) {
                     return FilterChip(
-                      label: Text(d),
+                      label: Text(d, style: const TextStyle(color: textColor)),
+                      backgroundColor: Colors.white10,
+                      selectedColor: accent.withOpacity(0.4),
                       selected: _days[d]!,
                       onSelected: (v) => setState(() => _days[d] = v),
                     );
                   }).toList(),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
 
                 // 🧍 Cliente
                 DropdownButtonFormField<String>(
+                  dropdownColor: background,
                   decoration: const InputDecoration(
                     labelText: 'Cliente',
+                    labelStyle: TextStyle(color: Colors.white70),
                     border: OutlineInputBorder(),
+                    enabledBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white24),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: accent),
+                    ),
                   ),
+                  style: const TextStyle(color: textColor),
                   value: _selectedClient,
                   items: _clients
                       .map(
                         (c) => DropdownMenuItem(
                           value: c['id'] as String,
-                          child: Text(c['name']),
+                          child: Text(
+                            c['name'],
+                            style: const TextStyle(color: textColor),
+                          ),
                         ),
                       )
                       .toList(),
                   onChanged: (val) => setState(() => _selectedClient = val),
-                  validator: (val) =>
-                      val == null ? 'Selecciona un cliente' : null,
                 ),
                 const SizedBox(height: 12),
 
                 // 📝 Nota
                 TextFormField(
                   controller: _noteCtrl,
+                  style: const TextStyle(color: textColor),
                   decoration: const InputDecoration(
                     labelText: 'Nota o descripción',
+                    labelStyle: TextStyle(color: Colors.white70),
                     border: OutlineInputBorder(),
+                    enabledBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white24),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: accent),
+                    ),
                   ),
                   maxLines: 2,
                   validator: (v) => (v == null || v.trim().isEmpty)
@@ -389,17 +428,19 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
                 // 💾 Botón
                 SizedBox(
                   width: double.infinity,
-                  child: ElevatedButton.icon(
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(backgroundColor: accent),
                     onPressed: _saving ? null : _save,
-                    icon: const Icon(Icons.check),
+                    icon: const Icon(Icons.check, color: Colors.white),
                     label: Text(
                       _saving
                           ? (widget.existingSession != null
                                 ? 'Actualizando...'
-                                : 'Agendando sesiones...')
+                                : 'Agendando...')
                           : (widget.existingSession != null
                                 ? 'Guardar cambios'
                                 : 'Guardar sesiones'),
+                      style: const TextStyle(color: Colors.white),
                     ),
                   ),
                 ),
@@ -409,6 +450,14 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _darkTile(IconData icon, String text, VoidCallback onTap) {
+    return ListTile(
+      leading: Icon(icon, color: Colors.white70),
+      title: Text(text, style: const TextStyle(color: Colors.white)),
+      onTap: onTap,
     );
   }
 }

@@ -26,17 +26,21 @@ class _PlanDetailScreenState extends State<PlanDetailScreen> {
   }
 
   Future<void> _reload() async {
-    final newFuture = _repo.getExercises(widget.plan.id); // ejecuta async fuera
+    final newFuture = _repo.getExercises(widget.plan.id);
     if (!mounted) return;
     setState(() {
-      _future = newFuture; // actualiza sin async dentro
+      _future = newFuture;
     });
   }
 
   Future<void> _addExercise() async {
+    const background = Color(0xFF1C1C1E);
+    const accent = Color(0xFFBF5AF2);
+    const textColor = Color(0xFFD9D9D9);
+
     final allExercises = await _exRepo.listAllVisible();
 
-    // Agrupamos los ejercicios por grupo muscular
+    // 🔹 Agrupamos ejercicios por grupo muscular
     final grouped = <String, List<Exercise>>{};
     for (final ex in allExercises) {
       final key = ex.muscleGroup?.toUpperCase() ?? 'OTROS';
@@ -46,38 +50,58 @@ class _PlanDetailScreenState extends State<PlanDetailScreen> {
     final selected = await showDialog<Exercise>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Seleccionar ejercicio'),
+        backgroundColor: background,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Seleccionar ejercicio',
+          style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
+        ),
         content: SizedBox(
           width: double.maxFinite,
+          height: 400,
           child: SingleChildScrollView(
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               children: grouped.entries.map((entry) {
-                final groupName = entry.key;
+                final group = entry.key;
                 final exercises = entry.value;
-
-                return ExpansionTile(
-                  title: Text(
-                    groupName,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                return Theme(
+                  data: Theme.of(context).copyWith(
+                    dividerColor: Colors.transparent,
+                    listTileTheme: const ListTileThemeData(
+                      iconColor: textColor,
+                    ),
                   ),
-                  children: exercises
-                      .map(
-                        (e) => ListTile(
-                          title: Text(e.name),
-                          subtitle: e.videoUrl != null
-                              ? Text(
-                                  e.videoUrl!,
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.blueGrey,
-                                  ),
-                                )
-                              : null,
-                          onTap: () => Navigator.pop(context, e),
-                        ),
-                      )
-                      .toList(),
+                  child: ExpansionTile(
+                    collapsedIconColor: Colors.white70,
+                    iconColor: accent,
+                    title: Text(
+                      group,
+                      style: const TextStyle(
+                        color: textColor,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    children: exercises
+                        .map(
+                          (e) => ListTile(
+                            title: Text(
+                              e.name,
+                              style: const TextStyle(color: textColor),
+                            ),
+                            subtitle: e.videoUrl != null
+                                ? Text(
+                                    e.videoUrl!,
+                                    style: const TextStyle(
+                                      color: Colors.white60,
+                                      fontSize: 12,
+                                    ),
+                                  )
+                                : null,
+                            onTap: () => Navigator.pop(context, e),
+                          ),
+                        )
+                        .toList(),
+                  ),
                 );
               }).toList(),
             ),
@@ -86,7 +110,10 @@ class _PlanDetailScreenState extends State<PlanDetailScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
+            child: const Text(
+              'Cancelar',
+              style: TextStyle(color: Colors.white70),
+            ),
           ),
         ],
       ),
@@ -94,6 +121,7 @@ class _PlanDetailScreenState extends State<PlanDetailScreen> {
 
     if (selected == null) return;
 
+    // 🔹 Diálogo de configuración del ejercicio
     final repsCtrl = TextEditingController();
     final setsCtrl = TextEditingController();
     final restCtrl = TextEditingController();
@@ -102,39 +130,77 @@ class _PlanDetailScreenState extends State<PlanDetailScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: Text('Configurar ${selected.name}'),
+        backgroundColor: background,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Configurar ${selected.name}',
+          style: const TextStyle(color: textColor, fontWeight: FontWeight.bold),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: repsCtrl,
-              decoration: const InputDecoration(labelText: 'Repeticiones'),
               keyboardType: TextInputType.number,
+              style: const TextStyle(color: textColor),
+              decoration: const InputDecoration(
+                labelText: 'Repeticiones',
+                labelStyle: TextStyle(color: Colors.white70),
+                focusedBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: accent),
+                ),
+              ),
             ),
+            const SizedBox(height: 8),
             TextField(
               controller: setsCtrl,
-              decoration: const InputDecoration(labelText: 'Series'),
               keyboardType: TextInputType.number,
+              style: const TextStyle(color: textColor),
+              decoration: const InputDecoration(
+                labelText: 'Series',
+                labelStyle: TextStyle(color: Colors.white70),
+                focusedBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: accent),
+                ),
+              ),
             ),
+            const SizedBox(height: 8),
             TextField(
               controller: restCtrl,
+              keyboardType: TextInputType.number,
+              style: const TextStyle(color: textColor),
               decoration: const InputDecoration(
                 labelText: 'Descanso (segundos)',
+                labelStyle: TextStyle(color: Colors.white70),
+                focusedBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: accent),
+                ),
               ),
-              keyboardType: TextInputType.number,
             ),
+            const SizedBox(height: 8),
             TextField(
               controller: notesCtrl,
-              decoration: const InputDecoration(labelText: 'Notas'),
+              style: const TextStyle(color: textColor),
+              decoration: const InputDecoration(
+                labelText: 'Notas',
+                labelStyle: TextStyle(color: Colors.white70),
+                focusedBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: accent),
+                ),
+              ),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
+            child: const Text(
+              'Cancelar',
+              style: TextStyle(color: Colors.white70),
+            ),
           ),
           FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: accent),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Guardar'),
           ),
@@ -158,47 +224,140 @@ class _PlanDetailScreenState extends State<PlanDetailScreen> {
   }
 
   Future<void> _removeExercise(String id) async {
-    await Supabase.instance.client
-        .from('training_plan_exercise')
-        .delete()
-        .eq('id', id);
-    _reload();
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF2C2C2E),
+        title: const Text(
+          'Eliminar ejercicio',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          '¿Deseas eliminar este ejercicio del plan?',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text(
+              'Cancelar',
+              style: TextStyle(color: Colors.white70),
+            ),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await Supabase.instance.client
+          .from('training_plan_exercise')
+          .delete()
+          .eq('id', id);
+      _reload();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    const background = Color(0xFF1C1C1E);
+    const cardColor = Color(0xFF2C2C2E);
+    const accent = Color(0xFFBF5AF2);
+    const textColor = Color(0xFFD9D9D9);
+
     return Scaffold(
+      backgroundColor: background,
       appBar: AppBar(
-        title: Text(widget.plan.name),
+        backgroundColor: background,
+        elevation: 0,
+        title: Text(
+          widget.plan.name,
+          style: const TextStyle(
+            color: textColor,
+            fontWeight: FontWeight.bold,
+            fontSize: 22,
+          ),
+        ),
+        iconTheme: const IconThemeData(color: textColor),
         actions: [
-          IconButton(icon: const Icon(Icons.add), onPressed: _addExercise),
+          IconButton(
+            icon: const Icon(Icons.add, color: accent),
+            onPressed: _addExercise,
+          ),
         ],
       ),
       body: FutureBuilder<List<TrainingPlanExercise>>(
         future: _future,
         builder: (context, snap) {
-          if (!snap.hasData)
-            return const Center(child: CircularProgressIndicator());
-          final items = snap.data!;
-          if (items.isEmpty)
-            return const Center(child: Text('No hay ejercicios en este plan.'));
+          if (snap.connectionState != ConnectionState.done) {
+            return const Center(
+              child: CircularProgressIndicator(color: accent),
+            );
+          }
+          if (snap.hasError) {
+            return Center(
+              child: Text(
+                'Error: ${snap.error}',
+                style: const TextStyle(color: Colors.redAccent),
+              ),
+            );
+          }
 
-          return ListView.separated(
-            itemCount: items.length,
-            separatorBuilder: (_, __) => const Divider(height: 0),
-            itemBuilder: (_, i) {
-              final e = items[i];
-              return ListTile(
-                title: Text(e.exerciseName ?? 'Ejercicio'),
-                subtitle: Text(
-                  'Series: ${e.sets} · Reps: ${e.repetitions} · Descanso: ${e.restSeconds}s',
-                ),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () => _removeExercise(e.id),
-                ),
-              );
-            },
+          final items = snap.data ?? [];
+          if (items.isEmpty) {
+            return const Center(
+              child: Text(
+                'No hay ejercicios en este plan.',
+                style: TextStyle(color: textColor, fontSize: 16),
+              ),
+            );
+          }
+
+          return RefreshIndicator(
+            color: accent,
+            onRefresh: _reload,
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: items.length,
+              itemBuilder: (_, i) {
+                final e = items[i];
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: cardColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white10),
+                  ),
+                  child: ListTile(
+                    title: Text(
+                      e.exerciseName ?? 'Ejercicio',
+                      style: const TextStyle(
+                        color: textColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    subtitle: Text(
+                      'Series: ${e.sets} · Reps: ${e.repetitions} · Descanso: ${e.restSeconds}s',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 13,
+                      ),
+                    ),
+                    trailing: IconButton(
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        color: Colors.redAccent,
+                      ),
+                      onPressed: () => _removeExercise(e.id),
+                    ),
+                  ),
+                );
+              },
+            ),
           );
         },
       ),
