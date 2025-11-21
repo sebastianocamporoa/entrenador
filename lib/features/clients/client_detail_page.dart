@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Vista de detalle de un cliente (coach: lectura en datos/progreso; edición SOLO en planes)
 class ClientDetailPage extends StatelessWidget {
   final Map<String, dynamic> client;
 
@@ -10,13 +9,32 @@ class ClientDetailPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = client;
+    const background = Color(0xFF1C1C1E);
+    const cardColor = Color(0xFF2C2C2E);
+    const accent = Color(0xFFBF5AF2);
+    const textColor = Color(0xFFD9D9D9);
 
     return DefaultTabController(
       length: 3,
       child: Scaffold(
+        backgroundColor: background,
         appBar: AppBar(
-          title: Text(c['name'] ?? 'Cliente'),
+          backgroundColor: background,
+          elevation: 0,
+          title: Text(
+            c['name'] ?? 'Cliente',
+            style: const TextStyle(
+              color: textColor,
+              fontWeight: FontWeight.w700,
+              fontSize: 22,
+            ),
+          ),
+          iconTheme: const IconThemeData(color: textColor),
           bottom: const TabBar(
+            indicatorColor: accent,
+            labelColor: accent,
+            unselectedLabelColor: Colors.white54,
+            labelStyle: TextStyle(fontWeight: FontWeight.bold),
             tabs: [
               Tab(text: 'Datos'),
               Tab(text: 'Planes'),
@@ -36,7 +54,6 @@ class ClientDetailPage extends StatelessWidget {
   }
 }
 
-/// 🔹 Tab 1: Datos del cliente (solo lectura)
 class _DatosTab extends StatelessWidget {
   final Map<String, dynamic> c;
   const _DatosTab({required this.c});
@@ -56,23 +73,69 @@ class _DatosTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const cardColor = Color(0xFF2C2C2E);
+    const textColor = Color(0xFFD9D9D9);
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _Tile(label: 'Email', value: c['email']),
-        _Tile(label: 'Teléfono', value: c['phone']),
-        _Tile(label: 'Objetivo', value: c['goal']),
-        _Tile(label: 'Sexo', value: _sexLabel(c['sex'])),
-        _Tile(
-          label: 'Estado',
-          value: (c['is_active'] ?? true) ? 'Activo' : 'Inactivo',
+        Container(
+          decoration: BoxDecoration(
+            color: cardColor,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              CircleAvatar(
+                radius: 40,
+                backgroundColor: Colors.purple.withOpacity(0.3),
+                child: Text(
+                  (c['name'] ?? '?')[0].toUpperCase(),
+                  style: const TextStyle(
+                    fontSize: 36,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                c['name'] ?? '—',
+                style: const TextStyle(
+                  color: textColor,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                c['email'] ?? '',
+                style: const TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+              const Divider(height: 32, color: Colors.white10),
+              _Tile(label: 'Teléfono', value: c['phone']),
+              _Tile(label: 'Objetivo', value: c['goal']),
+              _Tile(label: 'Sexo', value: _sexLabel(c['sex'])),
+              _Tile(
+                label: 'Estado',
+                value: (c['is_active'] ?? true) ? 'Activo' : 'Inactivo',
+              ),
+            ],
+          ),
         ),
       ],
     );
   }
 }
 
-/// 🔹 Tab 2: Planes asignados al cliente (coach puede asignar y quitar)
 class _PlanesTab extends StatefulWidget {
   final String clientId;
   final String clientName;
@@ -95,7 +158,7 @@ class _PlanesTabState extends State<_PlanesTab> {
 
   Future<List<Map<String, dynamic>>> _loadAssignedPlans() async {
     final data = await _db
-        .from('client_plan') // ✅ tabla corregida
+        .from('client_plan')
         .select('id, start_date, is_active, plan:plan_id(id, name, goal)')
         .eq('client_id', widget.clientId)
         .order('start_date', ascending: false);
@@ -118,7 +181,6 @@ class _PlanesTabState extends State<_PlanesTab> {
     final coachId = _db.auth.currentUser?.id;
     if (coachId == null) return;
 
-    // 🔹 1) Traer planes del coach desde training_plan
     final plans = await _db
         .from('training_plan')
         .select('id, name, goal, scope, trainer_id')
@@ -127,10 +189,10 @@ class _PlanesTabState extends State<_PlanesTab> {
 
     if (!mounted) return;
 
-    // 🔹 2) Mostrar selector
     final selected = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
+      backgroundColor: const Color(0xFF1C1C1E),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -142,7 +204,6 @@ class _PlanesTabState extends State<_PlanesTab> {
 
     if (selected == null) return;
 
-    // 🔹 3) Insertar relación cliente-plan
     setState(() => _busy = true);
     try {
       await _db.from('client_plan').insert({
@@ -160,7 +221,7 @@ class _PlanesTabState extends State<_PlanesTab> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('No se pudo asignar: $e')));
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -170,15 +231,23 @@ class _PlanesTabState extends State<_PlanesTab> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Quitar plan'),
-        content: const Text('¿Deseas quitar este plan del cliente?'),
+        backgroundColor: const Color(0xFF2C2C2E),
+        title: const Text('Quitar plan', style: TextStyle(color: Colors.white)),
+        content: const Text(
+          '¿Deseas quitar este plan del cliente?',
+          style: TextStyle(color: Colors.white70),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
+            child: const Text(
+              'Cancelar',
+              style: TextStyle(color: Colors.white),
+            ),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
             child: const Text('Quitar'),
           ),
         ],
@@ -198,7 +267,7 @@ class _PlanesTabState extends State<_PlanesTab> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('No se pudo quitar: $e')));
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -206,16 +275,27 @@ class _PlanesTabState extends State<_PlanesTab> {
 
   @override
   Widget build(BuildContext context) {
+    const accent = Color(0xFFBF5AF2);
+    const cardColor = Color(0xFF2C2C2E);
+    const textColor = Color(0xFFD9D9D9);
+
     return Stack(
       children: [
         FutureBuilder<List<Map<String, dynamic>>>(
           future: _future,
           builder: (context, snap) {
             if (snap.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
+              return const Center(
+                child: CircularProgressIndicator(color: accent),
+              );
             }
             if (snap.hasError) {
-              return Center(child: Text('Error: ${snap.error}'));
+              return Center(
+                child: Text(
+                  'Error: ${snap.error}',
+                  style: TextStyle(color: accent),
+                ),
+              );
             }
             final items = snap.data ?? [];
             if (items.isEmpty) {
@@ -223,7 +303,10 @@ class _PlanesTabState extends State<_PlanesTab> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text('Sin planes asignados'),
+                    const Text(
+                      'Sin planes asignados',
+                      style: TextStyle(color: textColor),
+                    ),
                     const SizedBox(height: 12),
                     FilledButton.icon(
                       onPressed: _busy ? null : _assignPlanFlow,
@@ -235,23 +318,39 @@ class _PlanesTabState extends State<_PlanesTab> {
               );
             }
             return RefreshIndicator(
+              color: accent,
               onRefresh: () async =>
                   setState(() => _future = _loadAssignedPlans()),
-              child: ListView.separated(
-                padding: const EdgeInsets.only(bottom: 88),
+              child: ListView.builder(
+                padding: const EdgeInsets.all(16),
                 itemCount: items.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
                 itemBuilder: (_, i) {
                   final p = items[i];
-                  return ListTile(
-                    title: Text(p['name'] ?? 'Plan'),
-                    subtitle: Text(p['goal'] ?? '—'),
-                    trailing: IconButton(
-                      tooltip: 'Quitar plan',
-                      icon: const Icon(Icons.delete_outline),
-                      onPressed: _busy
-                          ? null
-                          : () => _unassignPlan(p['assignment_id'] as String),
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: cardColor,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white10),
+                    ),
+                    child: ListTile(
+                      title: Text(
+                        p['name'] ?? 'Plan',
+                        style: const TextStyle(color: textColor),
+                      ),
+                      subtitle: Text(
+                        p['goal'] ?? '—',
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(
+                          Icons.delete_outline,
+                          color: Colors.redAccent,
+                        ),
+                        onPressed: _busy
+                            ? null
+                            : () => _unassignPlan(p['assignment_id']),
+                      ),
                     ),
                   );
                 },
@@ -263,6 +362,7 @@ class _PlanesTabState extends State<_PlanesTab> {
           right: 16,
           bottom: 16,
           child: FloatingActionButton.extended(
+            backgroundColor: accent,
             onPressed: _busy ? null : _assignPlanFlow,
             icon: const Icon(Icons.add),
             label: const Text('Asignar plan'),
@@ -280,15 +380,20 @@ class _AssignPlanSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const background = Color(0xFF1C1C1E);
+    const textColor = Color(0xFFD9D9D9);
+
     return SafeArea(
       child: DraggableScrollableSheet(
         expand: false,
-        initialChildSize: 0.6,
-        minChildSize: 0.4,
+        initialChildSize: 0.7,
         maxChildSize: 0.9,
         builder: (_, controller) {
-          return Material(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          return Container(
+            decoration: const BoxDecoration(
+              color: background,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+            ),
             child: Column(
               children: [
                 const SizedBox(height: 12),
@@ -296,25 +401,20 @@ class _AssignPlanSheet extends StatelessWidget {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade400,
+                    color: Colors.grey.shade600,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
-                const SizedBox(height: 12),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Asignar plan a $clientName',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                      ),
-                    ],
+                const SizedBox(height: 16),
+                Text(
+                  'Asignar plan a $clientName',
+                  style: const TextStyle(
+                    color: textColor,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 Expanded(
                   child: ListView.builder(
                     controller: controller,
@@ -322,8 +422,14 @@ class _AssignPlanSheet extends StatelessWidget {
                     itemBuilder: (_, i) {
                       final p = plans[i];
                       return ListTile(
-                        title: Text(p['name'] ?? 'Plan'),
-                        subtitle: Text((p['goal'] ?? '').toString()),
+                        title: Text(
+                          p['name'] ?? 'Plan',
+                          style: const TextStyle(color: textColor),
+                        ),
+                        subtitle: Text(
+                          p['goal'] ?? '',
+                          style: const TextStyle(color: Colors.white70),
+                        ),
                         onTap: () => Navigator.pop(context, p),
                       );
                     },
@@ -347,7 +453,7 @@ class _ProgresoTab extends StatelessWidget {
     return const Center(
       child: Text(
         'Progreso del cliente (solo lectura)',
-        style: TextStyle(color: Colors.grey),
+        style: TextStyle(color: Colors.white54),
       ),
     );
   }
@@ -361,13 +467,21 @@ class _Tile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      title: Text(
-        label,
-        style: const TextStyle(fontSize: 12, color: Colors.grey),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white54, fontSize: 14),
+          ),
+          Text(
+            value == null || value!.isEmpty ? '—' : value!,
+            style: const TextStyle(color: Colors.white, fontSize: 15),
+          ),
+        ],
       ),
-      subtitle: Text(value == null || value!.isEmpty ? '—' : value!),
     );
   }
 }
