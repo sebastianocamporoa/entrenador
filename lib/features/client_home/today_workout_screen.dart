@@ -34,9 +34,13 @@ class _TodayWorkoutScreenState extends State<TodayWorkoutScreen> {
           final items = snap.data ?? [];
           if (items.isEmpty) {
             return const Center(
-              child: Text('No tienes entrenamiento asignado para hoy.'),
+              child: Text(
+                'Tu entrenador aún no ha iniciado tu entrenamiento de hoy.',
+                textAlign: TextAlign.center,
+              ),
             );
           }
+
           return ListView.separated(
             padding: const EdgeInsets.all(12),
             itemBuilder: (_, i) {

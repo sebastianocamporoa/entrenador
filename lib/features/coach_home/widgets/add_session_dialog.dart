@@ -186,11 +186,12 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
 
         final session = TrainingSession(
           id: widget.existingSession!.id?.toString() ?? '',
-          trainerId: user.id.toString(), // ✅ conversión explícita
+          trainerId: user.id.toString(),
           startTime: startDateTime,
           endTime: endDateTime,
           notes: _noteCtrl.text.trim(),
           clientId: _selectedClient!,
+          started: widget.existingSession!.location == "true",
         );
 
         await _repo.updateSession(session);

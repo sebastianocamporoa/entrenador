@@ -11,8 +11,9 @@ class TrainingSessionsRepo {
 
     final res = await _supa
         .from('training_session')
-        // 👇 usamos 'name' porque el cliente viene de la tabla clients
-        .select('*, client:client_id(name)')
+        .select(
+          'id, trainer_id, client_id, start_time, end_time, notes, started, client:client_id(name)',
+        )
         .eq('trainer_id', user.id)
         .order('start_time', ascending: true);
 
@@ -20,7 +21,7 @@ class TrainingSessionsRepo {
         .map(
           (e) => TrainingSession.fromJson({
             ...e,
-            'client_name': e['client']?['name'], // 👈 aquí también
+            'client_name': e['client']?['name'],
           }),
         )
         .toList();
@@ -43,6 +44,7 @@ class TrainingSessionsRepo {
       'start_time': startTime.toIso8601String(),
       'end_time': endTime.toIso8601String(),
       'notes': notes,
+      'started': false, // 👈 nuevo campo por defecto
     });
   }
 
@@ -62,5 +64,10 @@ class TrainingSessionsRepo {
           'client_id': session.clientId,
         })
         .eq('id', session.id);
+  }
+
+  /// 🔹 Marca una sesión como iniciada (nuevo paso 3)
+  Future<void> markSessionStarted(String id) async {
+    await _supa.from('training_session').update({'started': true}).eq('id', id);
   }
 }

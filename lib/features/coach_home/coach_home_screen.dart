@@ -64,6 +64,9 @@ class _CoachHomeScreenState extends State<CoachHomeScreen> {
         color: _getColorForClient(s.clientId),
         isAllDay: false,
         notes: s.clientName ?? '',
+        location: s.started.toString(), // <<--- guardamos started aquí
+        recurrenceId:
+            s.clientId, // <<--- guardamos clientId por si lo necesitas
       );
     }).toList();
   }
@@ -224,8 +227,8 @@ class _CoachHomeScreenState extends State<CoachHomeScreen> {
                   timeSlotViewSettings: const TimeSlotViewSettings(
                     timeTextStyle: TextStyle(color: Colors.white70),
                     timeIntervalHeight: 60,
-                    startHour: 6,
-                    endHour: 22,
+                    startHour: 0,
+                    endHour: 24,
                   ),
                   onTap: (details) async {
                     if (details.targetElement == CalendarElement.appointment) {
@@ -342,6 +345,17 @@ class _SessionOptionsSheet extends StatelessWidget {
                   borderRadius: BorderRadius.circular(4),
                 ),
               ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.play_arrow, color: Colors.greenAccent),
+              title: const Text(
+                'Iniciar sesión',
+                style: TextStyle(color: textColor),
+              ),
+              onTap: () async {
+                await repo.markSessionStarted(session.id.toString());
+                if (context.mounted) Navigator.pop(context, 'updated');
+              },
             ),
             ListTile(
               leading: const Icon(Icons.edit, color: accent),

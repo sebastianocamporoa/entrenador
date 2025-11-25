@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'clients_api.dart';
 import 'client_detail_page.dart';
+import 'add_client_screen.dart'; // 👈 IMPORTANTE
 
 class ClientsPage extends StatefulWidget {
   const ClientsPage({super.key});
@@ -17,6 +18,10 @@ class _ClientsPageState extends State<ClientsPage> {
   void initState() {
     super.initState();
     _future = api.list();
+  }
+
+  Future<void> _reload() async {
+    setState(() => _future = api.list());
   }
 
   @override
@@ -41,6 +46,10 @@ class _ClientsPageState extends State<ClientsPage> {
         ),
         iconTheme: const IconThemeData(color: textColor),
       ),
+
+      // --------------------------
+      //   LISTA DE CLIENTES
+      // --------------------------
       body: FutureBuilder(
         future: _future,
         builder: (context, snap) {
@@ -71,9 +80,7 @@ class _ClientsPageState extends State<ClientsPage> {
 
           return RefreshIndicator(
             color: accent,
-            onRefresh: () async {
-              setState(() => _future = api.list());
-            },
+            onRefresh: _reload,
             child: ListView.separated(
               physics: const BouncingScrollPhysics(),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -153,7 +160,7 @@ class _ClientsPageState extends State<ClientsPage> {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        Icon(
+                        const Icon(
                           Icons.arrow_forward_ios_rounded,
                           color: Colors.white38,
                           size: 16,
@@ -165,6 +172,23 @@ class _ClientsPageState extends State<ClientsPage> {
               },
             ),
           );
+        },
+      ),
+
+      // --------------------------
+      //   BOTÓN AGREGAR CLIENTE
+      // --------------------------
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: accent,
+        child: const Icon(Icons.person_add, color: Colors.white),
+        onPressed: () async {
+          final added = await Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const AddClientScreen()));
+
+          if (added == true) {
+            _reload();
+          }
         },
       ),
     );
