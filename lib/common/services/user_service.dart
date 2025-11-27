@@ -2,7 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class UserService {
-  final _supa = Supabase.instance.client;
+  // Usamos una propiedad getter para asegurar que siempre usamos la instancia actual
+  SupabaseClient get _supa => Supabase.instance.client;
 
   /// Devuelve 'admin' | 'coach' | 'client'.
   /// Si hay error/RLS/fila inexistente => devuelve null (NO forzar 'client').
@@ -16,10 +17,10 @@ class UserService {
         final isAdm = await _supa.rpc('is_admin') as bool?;
         if (isAdm == true) return 'admin';
       } catch (_) {
-        // seguimos con select normal
+        // Si falla la RPC o no existe, seguimos con el select normal
       }
 
-      // 2) Leer mi fila en app_user (policy: app_user_self_select)
+      // 2) Leer mi fila en app_user
       final me = await _supa
           .from('app_user')
           .select('role')
@@ -27,50 +28,58 @@ class UserService {
           .maybeSingle();
 
       final role = (me?['role'] as String?)?.toLowerCase();
+
       if (role == 'admin' || role == 'coach' || role == 'client') {
         return role;
       }
-      return 'client'; // default si hay fila pero sin rol válido
+
+      // Si existe el usuario pero el rol es extraño o nulo, asumimos cliente por defecto
+      // (Ojo: solo si 'me' no fue null. Si 'me' es null, devolvemos null abajo)
+      if (me != null) {
+        return 'client';
+      }
+
+      return null;
     } catch (e) {
-      // Importante: NO forzar 'client' ante errores de permisos o query.
       debugPrint('[UserService.getRole] ERROR: $e');
       return null;
     }
   }
 
-  /// ¿Cliente asociado a un entrenador?
+  /// Verifica si el Cliente actual tiene un Entrenador asignado.
   Future<bool> isClientLinkedToTrainer() async {
-    final supa = Supabase.instance.client;
-    final user = supa.auth.currentUser;
-    if (user == null) return false;
+    try {
+      final user = _supa.auth.currentUser;
+      if (user == null) return false;
 
-    // 1. Obtener app_user.id
-    final profile = await supa
-        .from('app_user')
-        .select('id')
-        .eq('auth_user_id', user.id)
-        .maybeSingle();
+      // 1. Obtener clients.id usando el ID de autenticación.
+      // NOTA: No necesitamos consultar 'app_user' primero porque tu tabla 'clients'
+      // ya tiene el 'app_user_id' vinculado directamente al Auth ID.
+      final client = await _supa
+          .from('clients')
+          .select('id')
+          .eq('app_user_id', user.id)
+          .maybeSingle();
 
-    if (profile == null) return false;
-    final appUserId = profile['id'];
+      if (client == null) {
+        // El usuario no tiene perfil de cliente creado aún
+        return false;
+      }
 
-    // 2. Obtener clients.id usando app_user_id
-    final client = await supa
-        .from('clients')
-        .select('id')
-        .eq('app_user_id', appUserId)
-        .maybeSingle();
+      final clientTableId = client['id'];
 
-    if (client == null) return false;
-    final clientTableId = client['id'];
+      // 2. Ver si aparece en la tabla de relación client_trainer
+      final link = await _supa
+          .from('client_trainer')
+          .select('id') // Solo traemos el ID para ser más eficientes
+          .eq('client_id', clientTableId)
+          .maybeSingle();
 
-    // 3. Ver si aparece en client_trainer
-    final link = await supa
-        .from('client_trainer')
-        .select()
-        .eq('client_id', clientTableId)
-        .maybeSingle();
-
-    return link != null;
+      // Si link no es nulo, significa que encontró la relación
+      return link != null;
+    } catch (e) {
+      debugPrint('[UserService.isClientLinkedToTrainer] ERROR: $e');
+      return false;
+    }
   }
 }

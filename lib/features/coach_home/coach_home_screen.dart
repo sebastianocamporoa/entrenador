@@ -58,15 +58,14 @@ class _CoachHomeScreenState extends State<CoachHomeScreen> {
     return sessions.map((s) {
       return Appointment(
         id: s.id,
-        startTime: s.startTime,
-        endTime: s.endTime,
+        startTime: s.startTime.toLocal(),
+        endTime: s.endTime.toLocal(),
         subject: s.notes ?? (s.clientName ?? 'Sesión'),
         color: _getColorForClient(s.clientId),
         isAllDay: false,
         notes: s.clientName ?? '',
-        location: s.started.toString(), // <<--- guardamos started aquí
-        recurrenceId:
-            s.clientId, // <<--- guardamos clientId por si lo necesitas
+        location: s.started.toString(),
+        recurrenceId: s.clientId,
       );
     }).toList();
   }
@@ -85,16 +84,12 @@ class _CoachHomeScreenState extends State<CoachHomeScreen> {
         user?.email?.split('@').first ??
         'Entrenador';
 
-    // Determinar el saludo por hora
     final hour = DateTime.now().hour;
-    String greeting;
-    if (hour < 12) {
-      greeting = 'Buenos días';
-    } else if (hour < 18) {
-      greeting = 'Buenas tardes';
-    } else {
-      greeting = 'Buenas noches';
-    }
+    final greeting = hour < 12
+        ? 'Buenos días'
+        : hour < 18
+        ? 'Buenas tardes'
+        : 'Buenas noches';
 
     return Scaffold(
       backgroundColor: background,
@@ -113,7 +108,6 @@ class _CoachHomeScreenState extends State<CoachHomeScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // 🔹 Encabezado personalizado
             Padding(
               padding: const EdgeInsets.only(bottom: 24),
               child: Column(
@@ -140,33 +134,36 @@ class _CoachHomeScreenState extends State<CoachHomeScreen> {
               ),
             ),
 
-            // 🔹 Botones principales
             FilledButton(
               style: FilledButton.styleFrom(
                 backgroundColor: accent,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
-              onPressed: () => Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (_) => const ClientsPage())),
+              onPressed: () {
+                Navigator.of(
+                  context,
+                ).push(MaterialPageRoute(builder: (_) => const ClientsPage()));
+              },
               child: const Text('Ir a Clientes'),
             ),
             const SizedBox(height: 12),
+
             FilledButton.tonal(
               style: FilledButton.styleFrom(
                 backgroundColor: Colors.white10,
                 foregroundColor: textColor,
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const PlansListScreen()),
-              ),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const PlansListScreen()),
+                );
+              },
               child: const Text('Planes de entrenamiento'),
             ),
             const SizedBox(height: 28),
 
-            // 🗓️ Calendario semanal
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -202,35 +199,36 @@ class _CoachHomeScreenState extends State<CoachHomeScreen> {
                   showDatePickerButton: true,
                   showCurrentTimeIndicator: true,
                   todayHighlightColor: accent,
-                  headerStyle: const CalendarHeaderStyle(
-                    textAlign: TextAlign.center,
-                    backgroundColor: backgroundSecondary,
-                    textStyle: TextStyle(
-                      color: Color(0xFFD9D9D9),
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  viewHeaderStyle: const ViewHeaderStyle(
-                    backgroundColor: backgroundSecondary,
-                    dayTextStyle: TextStyle(color: Color(0xFFD9D9D9)),
-                    dateTextStyle: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  cellBorderColor: Colors.white10,
-                  appointmentTextStyle: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
                   timeSlotViewSettings: const TimeSlotViewSettings(
                     timeTextStyle: TextStyle(color: Colors.white70),
                     timeIntervalHeight: 60,
                     startHour: 0,
                     endHour: 24,
                   ),
+
                   onTap: (details) async {
+                    final tappedDate = details.date;
+
+                    if (details.targetElement == CalendarElement.calendarCell &&
+                        tappedDate != null) {
+                      final result = await showModalBottomSheet<bool>(
+                        context: context,
+                        isScrollControlled: true,
+                        backgroundColor: const Color(0xFF111111),
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.vertical(
+                            top: Radius.circular(20),
+                          ),
+                        ),
+                        builder: (_) => AddSessionDialog(
+                          initialDate: tappedDate, // <<---- CORREGIDO
+                        ),
+                      );
+
+                      if (result == true) _loadSessions();
+                      return;
+                    }
+
                     if (details.targetElement == CalendarElement.appointment) {
                       final session = details.appointments?.first;
                       if (session is Appointment) {
@@ -268,47 +266,14 @@ class _CoachHomeScreenState extends State<CoachHomeScreen> {
             shape: const RoundedRectangleBorder(
               borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
             ),
-            builder: (_) => const AddSessionDialog(),
+            builder: (_) => AddSessionDialog(
+              initialDate:
+                  DateTime.now(), // fallback si no viene del calendario
+            ),
           );
-          if (result == true) {
-            _loadSessions();
-          }
+          if (result == true) _loadSessions();
         },
         child: const Icon(Icons.add, color: Colors.white),
-      ),
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF1C1C1E),
-          border: Border(top: BorderSide(color: Colors.white10, width: 1)),
-        ),
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 24),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _BottomNavItem(
-              icon: Icons.home_rounded,
-              selected: true,
-              onTap: () {
-                // Ya estás en inicio
-              },
-            ),
-            _BottomNavItem(
-              icon: Icons.notifications_rounded,
-              hasBadge: true,
-              onTap: () {
-                // Aquí luego abriremos la pantalla de notificaciones
-              },
-            ),
-            _BottomNavItem(
-              isProfile: true,
-              imageUrl:
-                  'https://i.pravatar.cc/150?img=47', // Puedes reemplazarlo con el perfil real del entrenador
-              onTap: () {
-                // Aquí abriremos el perfil del usuario
-              },
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -374,8 +339,12 @@ class _SessionOptionsSheet extends StatelessWidget {
                       top: Radius.circular(20),
                     ),
                   ),
-                  builder: (_) => AddSessionDialog(existingSession: session),
+                  builder: (_) => AddSessionDialog(
+                    existingSession: session,
+                    initialDate: session.startTime,
+                  ),
                 );
+
                 if (result == true && context.mounted) {
                   final parent = context
                       .findAncestorStateOfType<_CoachHomeScreenState>();
@@ -399,7 +368,7 @@ class _SessionOptionsSheet extends StatelessWidget {
                       style: TextStyle(color: textColor),
                     ),
                     content: const Text(
-                      '¿Seguro que deseas eliminar esta sesión? Esta acción no se puede deshacer.',
+                      '¿Seguro que deseas eliminar esta sesión?',
                       style: TextStyle(color: Colors.white70),
                     ),
                     actions: [
@@ -422,7 +391,7 @@ class _SessionOptionsSheet extends StatelessWidget {
                 );
 
                 if (confirm == true) {
-                  await repo.deleteSession(session.id?.toString() ?? '');
+                  await repo.deleteSession(session.id.toString());
                   if (context.mounted) Navigator.pop(context, 'deleted');
                 }
               },
@@ -434,66 +403,6 @@ class _SessionOptionsSheet extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _BottomNavItem extends StatelessWidget {
-  final IconData? icon;
-  final bool selected;
-  final bool hasBadge;
-  final VoidCallback onTap;
-  final bool isProfile;
-  final String? imageUrl;
-
-  const _BottomNavItem({
-    this.icon,
-    this.selected = false,
-    this.hasBadge = false,
-    this.isProfile = false,
-    this.imageUrl,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    const accent = Color(0xFFBF5AF2);
-    const inactive = Colors.grey;
-    const active = Colors.white;
-
-    Widget content;
-
-    if (isProfile && imageUrl != null) {
-      content = CircleAvatar(
-        radius: 18,
-        backgroundImage: NetworkImage(imageUrl!),
-        backgroundColor: Colors.transparent,
-      );
-    } else {
-      content = Icon(icon, size: 28, color: selected ? active : inactive);
-    }
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          content,
-          if (hasBadge)
-            Positioned(
-              right: -1,
-              top: -2,
-              child: Container(
-                width: 8,
-                height: 8,
-                decoration: const BoxDecoration(
-                  color: accent,
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ),
-        ],
       ),
     );
   }

@@ -44,7 +44,7 @@ class TrainingSessionsRepo {
       'start_time': startTime.toIso8601String(),
       'end_time': endTime.toIso8601String(),
       'notes': notes,
-      'started': false, // 👈 nuevo campo por defecto
+      'started': false,
     });
   }
 
@@ -66,8 +66,49 @@ class TrainingSessionsRepo {
         .eq('id', session.id);
   }
 
-  /// 🔹 Marca una sesión como iniciada (nuevo paso 3)
+  /// 🔹 Marca una sesión como iniciada
   Future<void> markSessionStarted(String id) async {
     await _supa.from('training_session').update({'started': true}).eq('id', id);
+  }
+
+  /// 🔹 (MODIFICADO) Obtiene la sesión ACTIVA para el CLIENTE autenticado
+  /// Filtra una sesión que esté ocurriendo en este momento exacto.
+  Future<TrainingSession?> getClientSessionToday() async {
+    final user = _supa.auth.currentUser;
+    if (user == null) return null;
+
+    final now = DateTime.now();
+
+    // 1. Obtener ID del cliente
+    final clientMap = await _supa
+        .from('clients')
+        .select('id')
+        .eq('app_user_id', user.id)
+        .maybeSingle();
+
+    // Validación importante: si no hay cliente, retornamos null para evitar crash
+    if (clientMap == null) {
+      return null;
+    }
+
+    // 2. Buscar la sesión que está sucediendo AHORA
+    // Condición: start_time <= NOW < end_time
+    final res = await _supa
+        .from('training_session')
+        .select()
+        .eq('client_id', clientMap['id'])
+        // a) Que ya haya empezado (start_time <= ahora)
+        .lte('start_time', now.toIso8601String())
+        // b) Que NO haya terminado (end_time > ahora)
+        .gt('end_time', now.toIso8601String())
+        // c) Ordenar por hora de inicio (la más reciente primero)
+        .order('start_time', ascending: true)
+        // d) ¡IMPORTANTE! Limitar a 1 resultado para evitar el error "Results contain 2 rows"
+        .limit(1)
+        .maybeSingle();
+
+    if (res == null) return null;
+
+    return TrainingSession.fromJson(res);
   }
 }
