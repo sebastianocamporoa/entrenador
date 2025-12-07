@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-// 👇 Vistas y servicios que usamos según el rol
 import 'common/services/user_service.dart';
 import 'features/client_home/client_home_screen.dart';
 import 'features/coach_home/coach_home_screen.dart';
@@ -11,6 +11,8 @@ import 'features/admin/admin_home_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
   const supaUrl = String.fromEnvironment(
     'SUPABASE_URL',
@@ -31,10 +33,65 @@ class EntrenadorApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const primaryColor = Color(0xFFBF5AF2);
+    const backgroundColor = Color(0xFF1C1C1E);
+    const surfaceColor = Color(0xFF2C2C2E);
+    const errorColor = Colors.redAccent;
+
     return MaterialApp(
       title: 'Entrenador',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.indigo),
+      themeMode: ThemeMode.dark,
+      darkTheme: ThemeData(
+        brightness: Brightness.dark,
+        useMaterial3: true,
+        scaffoldBackgroundColor: backgroundColor,
+        primaryColor: primaryColor,
+        colorScheme: const ColorScheme.dark(
+          primary: primaryColor,
+          secondary: primaryColor,
+          surface: surfaceColor,
+          background: backgroundColor,
+          error: errorColor,
+          onSurface: Color(0xFFD9D9D9),
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: backgroundColor,
+          elevation: 0,
+          centerTitle: false,
+          scrolledUnderElevation: 0,
+          systemOverlayStyle: SystemUiOverlayStyle.light,
+          titleTextStyle: TextStyle(
+            color: Color(0xFFD9D9D9),
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            backgroundColor: primaryColor,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(25),
+            ),
+          ),
+        ),
+        inputDecorationTheme: const InputDecorationTheme(
+          labelStyle: TextStyle(color: Colors.white70),
+          hintStyle: TextStyle(color: Colors.white38),
+          enabledBorder: UnderlineInputBorder(
+            borderSide: BorderSide(color: Colors.white24),
+          ),
+          focusedBorder: UnderlineInputBorder(
+            borderSide: BorderSide(color: primaryColor),
+          ),
+        ),
+        bottomSheetTheme: const BottomSheetThemeData(
+          backgroundColor: Color(0xFF111111),
+          modalBackgroundColor: Color(0xFF111111),
+        ),
+        dialogTheme: const DialogThemeData(backgroundColor: Color(0xFF111111)),
+      ),
       home: const SplashScreen(),
     );
   }
@@ -52,6 +109,7 @@ class _SplashScreenState extends State<SplashScreen>
   late final Animation<double> _opacity;
   late final Animation<double> _scale;
   late final Animation<double> _lineMove;
+
   final Color _accent = const Color(0xFFBF5AF2);
 
   @override
@@ -97,14 +155,13 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0x001c1c1e),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: AnimatedBuilder(
         animation: _c,
         builder: (context, _) {
           final width = MediaQuery.of(context).size.width;
           return Stack(
             children: [
-              // Línea superior diagonal
               Positioned(
                 top: MediaQuery.of(context).size.height * 0.35,
                 left: -width * (1 - _lineMove.value),
@@ -117,7 +174,6 @@ class _SplashScreenState extends State<SplashScreen>
                   ),
                 ),
               ),
-              // Texto central
               Center(
                 child: Opacity(
                   opacity: _opacity.value,
@@ -125,8 +181,8 @@ class _SplashScreenState extends State<SplashScreen>
                     scale: 0.9 + 0.1 * _scale.value,
                     child: Text(
                       'Entrenador',
-                      style: const TextStyle(
-                        color: Color(0xFFBF5AF2),
+                      style: TextStyle(
+                        color: _accent,
                         fontSize: 48,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0.5,
@@ -135,7 +191,6 @@ class _SplashScreenState extends State<SplashScreen>
                   ),
                 ),
               ),
-              // Línea inferior diagonal
               Positioned(
                 bottom: MediaQuery.of(context).size.height * 0.35,
                 right: -width * (1 - _lineMove.value),
@@ -156,8 +211,6 @@ class _SplashScreenState extends State<SplashScreen>
   }
 }
 
-/// Si hay sesión → resolvemos rol y mostramos pantalla correspondiente.
-/// Si no hay sesión → Login/Registro.
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
   @override
@@ -171,13 +224,9 @@ class _AuthGateState extends State<AuthGate> {
   @override
   void initState() {
     super.initState();
-    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((
-      state,
-    ) async {
-      await _ensureProfileClient();
+    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((state) {
       if (mounted) setState(() {});
     });
-    _ensureProfileClient();
   }
 
   @override
@@ -186,13 +235,18 @@ class _AuthGateState extends State<AuthGate> {
     super.dispose();
   }
 
+  Future<String?> _initializeAndGetRole() async {
+    await _ensureProfileClient();
+    return await _userSrv.getRole();
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = Supabase.instance.client.auth.currentSession;
     if (session == null) return const LoginPage();
 
     return FutureBuilder<String?>(
-      future: _userSrv.getRole(),
+      future: _initializeAndGetRole(),
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) {
           return const Scaffold(
@@ -200,7 +254,7 @@ class _AuthGateState extends State<AuthGate> {
           );
         }
 
-        if (snap.hasError || snap.data == null) {
+        if (snap.hasError || !snap.hasData) {
           return Scaffold(
             appBar: AppBar(title: const Text('Resolviendo rol')),
             body: Center(
@@ -209,10 +263,10 @@ class _AuthGateState extends State<AuthGate> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.error_outline,
                       size: 48,
-                      color: Colors.redAccent,
+                      color: Theme.of(context).colorScheme.error,
                     ),
                     const SizedBox(height: 12),
                     Text(
@@ -245,7 +299,7 @@ class _AuthGateState extends State<AuthGate> {
           );
         }
 
-        final role = snap.data!;
+        final role = snap.data;
         if (role == 'admin') return const AdminHomeScreen();
         if (role == 'coach') return const CoachHomeScreen();
         return const ClientHomeScreen();
@@ -268,15 +322,15 @@ class _AuthGateState extends State<AuthGate> {
       if (exists == null) {
         await supa.from('app_user').insert({
           'auth_user_id': user.id,
-          'role': 'client',
+          'role': 'coach',
           'full_name':
               user.userMetadata?['full_name'] ?? user.email?.split('@').first,
           'email': user.email,
         });
-      } else if (exists['role'] == null) {
+      } else if (exists['role'] != 'coach') {
         await supa
             .from('app_user')
-            .update({'role': 'client'})
+            .update({'role': 'coach'})
             .eq('auth_user_id', user.id);
       }
     } catch (e) {
@@ -308,7 +362,6 @@ class _LoginPageState extends State<LoginPage> {
       final auth = Supabase.instance.client.auth;
 
       if (isLogin) {
-        // 🔹 Iniciar sesión
         final response = await auth.signInWithPassword(
           email: emailCtrl.text.trim(),
           password: passCtrl.text,
@@ -319,25 +372,25 @@ class _LoginPageState extends State<LoginPage> {
         }
 
         if (!mounted) return;
-        // 🔹 Redirigir al AuthGate
         Navigator.of(
           context,
         ).pushReplacement(MaterialPageRoute(builder: (_) => const AuthGate()));
       } else {
-        // 🔹 Registro
         final resp = await auth.signUp(
           email: emailCtrl.text.trim(),
           password: passCtrl.text,
-          data: {'full_name': emailCtrl.text.trim().split('@').first},
+          data: {
+            'full_name': emailCtrl.text.trim().split('@').first,
+            'role': 'coach',
+          },
         );
 
-        // Si el proyecto requiere verificación de correo
         if (resp.session == null) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                'Te enviamos un correo de verificación. Abre el enlace para activar tu cuenta e iniciar sesión.',
+                'Te enviamos un correo de verificación. Abre el enlace para activar tu cuenta.',
               ),
             ),
           );
@@ -360,22 +413,18 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    const accent = Color(0xFFBF5AF2);
-    const background = Color(0xFF1C1C1E);
-    const formBackground = Color(0xFF111111);
-    const textColor = Color(0xFFD9D9D9);
+    final theme = Theme.of(context);
+    final formBackground = const Color(0xFF111111);
 
     final title = isLogin ? 'Bienvenido de nuevo,' : 'Crea tu cuenta';
     final subtitle = isLogin ? 'Entrena con nosotros' : 'Comienza tu viaje';
     final action = isLogin ? 'Entrar' : 'Registrarme';
 
     return Scaffold(
-      backgroundColor: background,
       resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: Column(
           children: [
-            // 🔹 Imagen con diagonal y título
             Stack(
               children: [
                 ClipPath(
@@ -432,8 +481,6 @@ class _LoginPageState extends State<LoginPage> {
                 ),
               ],
             ),
-
-            // 🔹 Solo el formulario se ajusta y hace scroll
             Flexible(
               child: Container(
                 width: double.infinity,
@@ -453,8 +500,8 @@ class _LoginPageState extends State<LoginPage> {
                           padding: const EdgeInsets.only(bottom: 8),
                           child: Text(
                             errorMsg!,
-                            style: const TextStyle(
-                              color: Colors.redAccent,
+                            style: TextStyle(
+                              color: theme.colorScheme.error,
                               fontSize: 14,
                             ),
                           ),
@@ -462,32 +509,16 @@ class _LoginPageState extends State<LoginPage> {
                       TextField(
                         controller: emailCtrl,
                         keyboardType: TextInputType.emailAddress,
-                        style: const TextStyle(color: textColor),
-                        decoration: InputDecoration(
+                        decoration: const InputDecoration(
                           labelText: 'Correo electrónico',
-                          labelStyle: const TextStyle(color: Colors.white70),
-                          enabledBorder: const UnderlineInputBorder(
-                            borderSide: BorderSide(color: Colors.white24),
-                          ),
-                          focusedBorder: const UnderlineInputBorder(
-                            borderSide: BorderSide(color: accent),
-                          ),
                         ),
                       ),
                       const SizedBox(height: 24),
                       TextField(
                         controller: passCtrl,
                         obscureText: true,
-                        style: const TextStyle(color: textColor),
-                        decoration: InputDecoration(
+                        decoration: const InputDecoration(
                           labelText: 'Contraseña',
-                          labelStyle: const TextStyle(color: Colors.white70),
-                          enabledBorder: const UnderlineInputBorder(
-                            borderSide: BorderSide(color: Colors.white24),
-                          ),
-                          focusedBorder: const UnderlineInputBorder(
-                            borderSide: BorderSide(color: accent),
-                          ),
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -495,9 +526,12 @@ class _LoginPageState extends State<LoginPage> {
                         alignment: Alignment.centerRight,
                         child: TextButton(
                           onPressed: () {},
-                          child: const Text(
+                          child: Text(
                             '¿Olvidaste tu contraseña?',
-                            style: TextStyle(color: accent, fontSize: 14),
+                            style: TextStyle(
+                              color: theme.primaryColor,
+                              fontSize: 14,
+                            ),
                           ),
                         ),
                       ),
@@ -506,17 +540,10 @@ class _LoginPageState extends State<LoginPage> {
                         width: double.infinity,
                         height: 50,
                         child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: accent,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(25),
-                            ),
-                          ),
                           onPressed: loading ? null : _submit,
                           child: Text(
                             loading ? 'Procesando...' : action,
                             style: const TextStyle(
-                              color: Colors.white,
                               fontWeight: FontWeight.bold,
                               fontSize: 16,
                             ),
@@ -530,7 +557,7 @@ class _LoginPageState extends State<LoginPage> {
                           isLogin
                               ? '¿No tienes cuenta? Regístrate'
                               : '¿Ya tienes cuenta? Inicia sesión',
-                          style: const TextStyle(color: textColor),
+                          style: TextStyle(color: theme.colorScheme.onSurface),
                         ),
                       ),
                       const SizedBox(height: 20),
@@ -548,7 +575,7 @@ class _LoginPageState extends State<LoginPage> {
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
-  //TODO: corregir vista al abrir el teclado
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -623,7 +650,8 @@ class _OnboardingPageState extends State<OnboardingPage> {
 
   @override
   Widget build(BuildContext context) {
-    final accent = const Color(0xFFBF5AF2);
+    final theme = Theme.of(context);
+    final accent = theme.primaryColor;
 
     return Scaffold(
       backgroundColor: const Color(0xFF111111),
@@ -637,14 +665,14 @@ class _OnboardingPageState extends State<OnboardingPage> {
             itemBuilder: (_, i) => _OnboardSlide(data: _pages[i]),
           ),
           Positioned(
-            bottom: 70, // 🔹 Subido un poco (antes era 40)
+            bottom: 70,
             child: Row(
               children: List.generate(
                 _pages.length,
                 (i) => AnimatedContainer(
                   duration: const Duration(milliseconds: 300),
                   margin: const EdgeInsets.symmetric(horizontal: 4),
-                  width: i == _page ? 52 : 25, // 🔹 Más ancho el activo
+                  width: i == _page ? 52 : 25,
                   height: 4,
                   decoration: BoxDecoration(
                     color: i == _page ? accent : Colors.grey.shade700,
@@ -654,19 +682,17 @@ class _OnboardingPageState extends State<OnboardingPage> {
               ),
             ),
           ),
-
           if (_pages[_page].showButton)
             Positioned(
               bottom: 120,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: accent,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(50),
-                  ),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 36,
                     vertical: 14,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(50),
                   ),
                 ),
                 onPressed: _next,
@@ -705,14 +731,13 @@ class _OnboardSlide extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final background = const Color(0xFF1C1C1E);
-    const textColor = Color(0xFFD9D9D9);
+    final background = Theme.of(context).scaffoldBackgroundColor;
+    final textColor = Theme.of(context).colorScheme.onSurface;
 
     return Container(
       color: background,
       child: Column(
         children: [
-          // 🔹 Parte superior: imagen con degradado + clip diagonal
           ClipPath(
             clipper: _DiagonalClipper(),
             child: Stack(
@@ -722,7 +747,6 @@ class _OnboardSlide extends StatelessWidget {
                   width: double.infinity,
                   child: Image.asset(data.image, fit: BoxFit.cover),
                 ),
-                // 🔹 Degradado inferior
                 Positioned.fill(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
@@ -740,24 +764,19 @@ class _OnboardSlide extends StatelessWidget {
               ],
             ),
           ),
-
-          // 🔹 Parte inferior (contenido)
           Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
               child: Column(
-                mainAxisAlignment:
-                    MainAxisAlignment.start, // 🔹 texto más arriba
+                mainAxisAlignment: MainAxisAlignment.start,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  const SizedBox(
-                    height: 20,
-                  ), // 🔹 controla cuánto sube visualmente
+                  const SizedBox(height: 20),
                   Text(
                     data.title,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Color(0xFFD9D9D9),
+                    style: TextStyle(
+                      color: textColor,
                       fontSize: 28,
                       fontWeight: FontWeight.w500,
                       height: 1.1,
@@ -767,8 +786,8 @@ class _OnboardSlide extends StatelessWidget {
                   Text(
                     data.subtitle,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Color(0xFFD9D9D9),
+                    style: TextStyle(
+                      color: textColor,
                       fontSize: 34,
                       fontWeight: FontWeight.w800,
                       height: 1.1,
@@ -788,9 +807,7 @@ class _DiagonalClipper extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {
     final path = Path();
-    // 🔹 Empieza arriba a la izquierda
     path.lineTo(0, size.height);
-    // 🔹 Línea diagonal: baja más del lado derecho
     path.lineTo(size.width, size.height - 100);
     path.lineTo(size.width, 0);
     path.close();
