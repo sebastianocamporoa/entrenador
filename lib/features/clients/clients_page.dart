@@ -21,7 +21,9 @@ class _ClientsPageState extends State<ClientsPage> {
   }
 
   Future<void> _reload() async {
-    setState(() => _future = api.list());
+    setState(() {
+      _future = api.list();
+    });
   }
 
   @override
