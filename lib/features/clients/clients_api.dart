@@ -3,24 +3,39 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class ClientsApi {
   final supa = Supabase.instance.client;
 
-  /// Lista todos los clientes asignados al coach actual
   Future<List<Map<String, dynamic>>> list() async {
-    final coach = supa.auth.currentUser;
-    if (coach == null) return [];
+    final authUser = supa.auth.currentUser;
+    if (authUser == null) return [];
+
+    final coachProfile = await supa
+        .from('app_user')
+        .select('id')
+        .eq('auth_user_id', authUser.id)
+        .maybeSingle();
+
+    if (coachProfile == null) return [];
+
+    final coachId = coachProfile['id'];
 
     return await supa
         .from('clients')
         .select('id, name, email, is_active')
-        .eq('trainer_id', coach.id)
+        .eq('trainer_id', coachId)
         .order('name');
   }
 
-  /// Agrega un cliente usando su correo electrónico
   Future<void> addClient(String email) async {
-    final coach = supa.auth.currentUser;
-    if (coach == null) throw 'No autenticado';
+    final authUser = supa.auth.currentUser;
+    if (authUser == null) throw 'No autenticado';
 
-    // 1) Buscar usuario en app_user
+    final coachProfile = await supa
+        .from('app_user')
+        .select('id')
+        .eq('auth_user_id', authUser.id)
+        .single();
+
+    final coachId = coachProfile['id'] as String;
+
     final cleanEmail = email.trim().toLowerCase();
 
     final appUser = await supa
@@ -35,7 +50,6 @@ class ClientsApi {
 
     final appUserId = appUser['id'] as String;
 
-    // 2) Revisar si ya existe en clients
     final existingClient = await supa
         .from('clients')
         .select('id')
@@ -45,11 +59,10 @@ class ClientsApi {
     late String clientId;
 
     if (existingClient == null) {
-      // 3) Crear en clients
       final inserted = await supa
           .from('clients')
           .insert({
-            'trainer_id': coach.id,
+            'trainer_id': coachId,
             'app_user_id': appUserId,
             'name': appUser['full_name'],
             'email': appUser['email'],
@@ -62,26 +75,24 @@ class ClientsApi {
     } else {
       clientId = existingClient['id'] as String;
 
-      // Si existía pero no estaba asignado al coach → actualizar trainer_id
       await supa
           .from('clients')
-          .update({'trainer_id': coach.id})
+          .update({'trainer_id': coachId})
           .eq('id', clientId);
     }
 
-    // 4) Crear vínculo en client_trainer si no existe
     final linkExists = await supa
         .from('client_trainer')
         .select()
         .eq('client_id', clientId)
-        .eq('trainer_id', coach.id)
+        .eq('trainer_id', coachId)
         .maybeSingle();
 
     if (linkExists != null) return;
 
     await supa.from('client_trainer').insert({
       'client_id': clientId,
-      'trainer_id': coach.id,
+      'trainer_id': coachId,
     });
   }
 }

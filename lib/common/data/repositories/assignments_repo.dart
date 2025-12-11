@@ -42,7 +42,7 @@ class AssignmentsRepo {
     print('clients row = $clientRow');
 
     if (clientRow == null) {
-      print('❌ No existe fila en clients — retornando vacío');
+      print('❌ No existe fila en clients — retornando vacío' + appUserId);
       print('==============================');
       return [];
     }

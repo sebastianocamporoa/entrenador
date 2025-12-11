@@ -1,26 +1,37 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // Necesario para la consulta directa
+
 import '../../common/services/user_service.dart';
-import '../../common/data/repositories/training_sessions_repo.dart'; // Asegúrate de importar tu repo
-import '../../common/data/models/training_session.dart'; // Importa el modelo
+import '../../common/data/repositories/training_sessions_repo.dart';
+import '../../common/data/models/training_session.dart';
 import 'today_workout_screen.dart';
+
+// Importamos el Wizard que acabamos de crear
+import '../client_onboarding/client_onboarding_wizard.dart';
 
 class ClientHomeScreen extends StatefulWidget {
   const ClientHomeScreen({super.key});
+
   @override
   State<ClientHomeScreen> createState() => _ClientHomeScreenState();
 }
 
 class _ClientHomeScreenState extends State<ClientHomeScreen> {
   final _userSrv = UserService();
-  final _sessionRepo = TrainingSessionsRepo(); // Instancia del repo
+  final _sessionRepo = TrainingSessionsRepo();
+  final _supa = Supabase.instance.client;
 
-  // Vamos a cargar dos cosas: si está vinculado y la sesión de hoy
   late Future<Map<String, dynamic>> _initData;
 
   @override
   void initState() {
     super.initState();
     _loadData();
+
+    // 🔥 NUEVO: Verificamos si faltan datos apenas carga la pantalla
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkOnboarding();
+    });
   }
 
   void _loadData() {
@@ -29,12 +40,61 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
     });
   }
 
+  // Lógica para detectar si es la primera vez (o faltan datos)
+  Future<void> _checkOnboarding() async {
+    final user = _supa.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      // 1. Obtener ID interno (app_user)
+      final appUser = await _supa
+          .from('app_user')
+          .select('id')
+          .eq('auth_user_id', user.id)
+          .maybeSingle();
+
+      if (appUser == null) return;
+      final internalId = appUser['id'];
+
+      // 2. Consultar datos del cliente
+      final clientData = await _supa
+          .from('clients')
+          .select('sex, phone, goal')
+          .eq('app_user_id', internalId)
+          .maybeSingle();
+
+      if (clientData == null) return;
+
+      // 3. Verificar si algún campo clave está vacío o nulo
+      final needsOnboarding =
+          clientData['sex'] == null ||
+          clientData['phone'] == null ||
+          clientData['goal'] == null;
+
+      if (needsOnboarding) {
+        if (!mounted) return;
+
+        // 4. Lanzar el Wizard
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const ClientOnboardingWizard(),
+            fullscreenDialog: true, // Animación deslizante desde abajo
+          ),
+        );
+
+        // Al volver, recargamos por si acaso
+        _loadData();
+      }
+    } catch (e) {
+      debugPrint('Error verificando onboarding: $e');
+    }
+  }
+
   Future<Map<String, dynamic>> _fetchData() async {
     final isLinked = await _userSrv.isClientLinkedToTrainer();
     TrainingSession? session;
 
     if (isLinked) {
-      // Solo buscamos sesión si ya tiene entrenador
       session = await _sessionRepo.getClientSessionToday();
     }
 
@@ -47,11 +107,7 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
       appBar: AppBar(
         title: const Text('Mi rutina'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed:
-                _loadData, // Para que el cliente pueda recargar y ver si ya inició
-          ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadData),
         ],
       ),
       body: FutureBuilder<Map<String, dynamic>>(
