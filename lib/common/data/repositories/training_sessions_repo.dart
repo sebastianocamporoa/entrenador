@@ -79,11 +79,23 @@ class TrainingSessionsRepo {
 
     final now = DateTime.now();
 
+    final appUser = await _supa
+        .from('app_user')
+        .select('id, full_name, email')
+        .eq('email', user.email!.trim().toLowerCase())
+        .maybeSingle();
+
+    if (appUser == null) {
+      throw 'El usuario no existe. Debe registrarse primero.';
+    }
+
+    final appUserId = appUser['id'] as String;
+
     // 1. Obtener ID del cliente
     final clientMap = await _supa
         .from('clients')
         .select('id')
-        .eq('app_user_id', user.id)
+        .eq('app_user_id', appUserId)
         .maybeSingle();
 
     // Validación importante: si no hay cliente, retornamos null para evitar crash
@@ -93,18 +105,17 @@ class TrainingSessionsRepo {
 
     // 2. Buscar la sesión que está sucediendo AHORA
     // Condición: start_time <= NOW < end_time
+    //final now = DateTime.now();
+
+    // Al hacer .toUtc(), se vuelve 6:00 AM (que es lo que entiende Supabase)
+    final nowParaSupabase = now.toUtc().toIso8601String();
+
     final res = await _supa
         .from('training_session')
         .select()
         .eq('client_id', clientMap['id'])
-        // a) Que ya haya empezado (start_time <= ahora)
-        .lte('start_time', now.toIso8601String())
-        // b) Que NO haya terminado (end_time > ahora)
-        .gt('end_time', now.toIso8601String())
-        // c) Ordenar por hora de inicio (la más reciente primero)
-        .order('start_time', ascending: true)
-        // d) ¡IMPORTANTE! Limitar a 1 resultado para evitar el error "Results contain 2 rows"
-        .limit(1)
+        .lte('start_time', nowParaSupabase) // Compara 6:00 AM con la DB
+        .gt('end_time', nowParaSupabase) // Compara 6:00 AM con la DB
         .maybeSingle();
 
     if (res == null) return null;

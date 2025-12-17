@@ -327,11 +327,6 @@ class _AuthGateState extends State<AuthGate> {
               user.userMetadata?['full_name'] ?? user.email?.split('@').first,
           'email': user.email,
         });
-      } else if (exists['role'] != 'coach') {
-        await supa
-            .from('app_user')
-            .update({'role': 'coach'})
-            .eq('auth_user_id', user.id);
       }
     } catch (e) {
       debugPrint('Error asegurando perfil: $e');

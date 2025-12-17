@@ -52,13 +52,20 @@ class UserService {
       final user = _supa.auth.currentUser;
       if (user == null) return false;
 
-      // 1. Obtener clients.id usando el ID de autenticación.
-      // NOTA: No necesitamos consultar 'app_user' primero porque tu tabla 'clients'
-      // ya tiene el 'app_user_id' vinculado directamente al Auth ID.
+      final clientProfile = await _supa
+          .from('app_user')
+          .select('id')
+          .eq('auth_user_id', user.id)
+          .maybeSingle();
+
+      if (clientProfile == null) return false;
+
+      final clientId = clientProfile['id'];
+
       final client = await _supa
           .from('clients')
           .select('id')
-          .eq('app_user_id', user.id)
+          .eq('app_user_id', clientId)
           .maybeSingle();
 
       if (client == null) {

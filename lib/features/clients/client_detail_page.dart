@@ -10,7 +10,6 @@ class ClientDetailPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = client;
     const background = Color(0xFF1C1C1E);
-    const cardColor = Color(0xFF2C2C2E);
     const accent = Color(0xFFBF5AF2);
     const textColor = Color(0xFFD9D9D9);
 
@@ -37,7 +36,7 @@ class ClientDetailPage extends StatelessWidget {
             labelStyle: TextStyle(fontWeight: FontWeight.bold),
             tabs: [
               Tab(text: 'Datos'),
-              Tab(text: 'Planes'),
+              Tab(text: 'Agenda Semanal'), // Nombre actualizado
               Tab(text: 'Progreso'),
             ],
           ),
@@ -45,7 +44,10 @@ class ClientDetailPage extends StatelessWidget {
         body: TabBarView(
           children: [
             _DatosTab(c: c),
-            _PlanesTab(clientId: c['id'], clientName: c['name'] ?? 'Cliente'),
+            _AgendaTab(
+              clientId: c['id'],
+              clientName: c['name'] ?? 'Cliente',
+            ), // Nuevo Widget
             _ProgresoTab(clientId: c['id']),
           ],
         ),
@@ -54,6 +56,7 @@ class ClientDetailPage extends StatelessWidget {
   }
 }
 
+// --- TAB DE DATOS (Igual que antes) ---
 class _DatosTab extends StatelessWidget {
   final Map<String, dynamic> c;
   const _DatosTab({required this.c});
@@ -83,13 +86,6 @@ class _DatosTab extends StatelessWidget {
           decoration: BoxDecoration(
             color: cardColor,
             borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              ),
-            ],
           ),
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -115,7 +111,6 @@ class _DatosTab extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(height: 4),
               Text(
                 c['email'] ?? '',
                 style: const TextStyle(color: Colors.white70, fontSize: 14),
@@ -124,10 +119,6 @@ class _DatosTab extends StatelessWidget {
               _Tile(label: 'Teléfono', value: c['phone']),
               _Tile(label: 'Objetivo', value: c['goal']),
               _Tile(label: 'Sexo', value: _sexLabel(c['sex'])),
-              _Tile(
-                label: 'Estado',
-                value: (c['is_active'] ?? true) ? 'Activo' : 'Inactivo',
-              ),
             ],
           ),
         ),
@@ -136,309 +127,285 @@ class _DatosTab extends StatelessWidget {
   }
 }
 
-class _PlanesTab extends StatefulWidget {
+// --- NUEVO: TAB DE AGENDA SEMANAL ---
+class _AgendaTab extends StatefulWidget {
   final String clientId;
   final String clientName;
-  const _PlanesTab({required this.clientId, required this.clientName});
+  const _AgendaTab({required this.clientId, required this.clientName});
 
   @override
-  State<_PlanesTab> createState() => _PlanesTabState();
+  State<_AgendaTab> createState() => _AgendaTabState();
 }
 
-class _PlanesTabState extends State<_PlanesTab> {
+class _AgendaTabState extends State<_AgendaTab> {
   final _db = Supabase.instance.client;
-  late Future<List<Map<String, dynamic>>> _future;
-  bool _busy = false;
+
+  // Mapa para guardar qué plan toca cada día. Key = int (1-7), Value = Plan Data
+  Map<int, Map<String, dynamic>> _weeklySchedule = {};
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _future = _loadAssignedPlans();
+    _loadSchedule();
   }
 
-  Future<List<Map<String, dynamic>>> _loadAssignedPlans() async {
-    final data = await _db
-        .from('client_plan')
-        .select('id, start_date, is_active, plan:plan_id(id, name, goal)')
-        .eq('client_id', widget.clientId)
-        .order('start_date', ascending: false);
+  Future<void> _loadSchedule() async {
+    try {
+      final data = await _db
+          .from('client_schedule')
+          .select('day_of_week, plan:plan_id(id, name, goal)')
+          .eq('client_id', widget.clientId);
 
-    return List<Map<String, dynamic>>.from(
-      data.map((e) {
-        final p = e['plan'] ?? {};
-        return {
-          'assignment_id': e['id'],
-          'plan_id': p['id'],
-          'name': p['name'] ?? 'Plan',
-          'goal': p['goal'],
-          'is_active': e['is_active'] ?? true,
-        };
-      }),
-    );
+      final Map<int, Map<String, dynamic>> tempMap = {};
+
+      for (var item in data) {
+        final day = item['day_of_week'] as int;
+        final plan = item['plan'] as Map<String, dynamic>;
+        tempMap[day] = plan;
+      }
+
+      if (mounted) {
+        setState(() {
+          _weeklySchedule = tempMap;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error cargando agenda: $e');
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
-  Future<void> _assignPlanFlow() async {
-    final coachId = _db.auth.currentUser?.id;
-    if (coachId == null) return;
+  Future<void> _assignPlanToDay(int dayOfWeek) async {
+    final authUser = _db.auth.currentUser;
+    if (authUser == null) return;
 
+    // 1. Obtener ID interno del coach
+    final coachProfile = await _db
+        .from('app_user')
+        .select('id')
+        .eq('auth_user_id', authUser.id)
+        .single();
+    final internalCoachId = coachProfile['id'];
+
+    // 2. Traer planes disponibles
     final plans = await _db
         .from('training_plan')
-        .select('id, name, goal, scope, trainer_id')
-        .or('scope.eq.global,trainer_id.eq.$coachId')
+        .select('id, name, goal')
+        .or('scope.eq.global,trainer_id.eq.$internalCoachId')
         .order('created_at', ascending: false);
 
     if (!mounted) return;
 
-    final selected = await showModalBottomSheet<Map<String, dynamic>>(
+    // 3. Mostrar selector
+    final selectedPlan = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
-      isScrollControlled: true,
       backgroundColor: const Color(0xFF1C1C1E),
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (ctx) => _AssignPlanSheet(
+      builder: (ctx) => _PlanSelectorSheet(
         plans: List<Map<String, dynamic>>.from(plans),
-        clientName: widget.clientName,
+        dayName: _getDayName(dayOfWeek),
       ),
     );
 
-    if (selected == null) return;
+    if (selectedPlan == null) return;
 
-    setState(() => _busy = true);
+    // 4. Guardar en BD (Upsert: Si existe actualiza, si no crea)
     try {
-      await _db.from('client_plan').insert({
+      await _db.from('client_schedule').upsert({
         'client_id': widget.clientId,
-        'plan_id': selected['id'],
-        'start_date': DateTime.now().toIso8601String(),
-        'is_active': true,
-      });
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Plan asignado ✅')));
-      setState(() => _future = _loadAssignedPlans());
+        'day_of_week': dayOfWeek,
+        'plan_id': selectedPlan['id'],
+      }, onConflict: 'client_id, day_of_week'); // Clave única compuesta
+
+      _loadSchedule(); // Recargar UI
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Rutina asignada correctamente')),
+        );
+      }
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
-    } finally {
-      if (mounted) setState(() => _busy = false);
+      debugPrint('Error asignando: $e');
     }
   }
 
-  Future<void> _unassignPlan(String assignmentId) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF2C2C2E),
-        title: const Text('Quitar plan', style: TextStyle(color: Colors.white)),
-        content: const Text(
-          '¿Deseas quitar este plan del cliente?',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text(
-              'Cancelar',
-              style: TextStyle(color: Colors.white),
-            ),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
-            child: const Text('Quitar'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-
-    setState(() => _busy = true);
+  Future<void> _clearDay(int dayOfWeek) async {
     try {
-      await _db.from('client_plan').delete().eq('id', assignmentId);
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Plan quitado 🗑️')));
-      setState(() => _future = _loadAssignedPlans());
+      await _db
+          .from('client_schedule')
+          .delete()
+          .eq('client_id', widget.clientId)
+          .eq('day_of_week', dayOfWeek);
+      _loadSchedule();
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
-    } finally {
-      if (mounted) setState(() => _busy = false);
+      debugPrint('Error borrando dia: $e');
     }
+  }
+
+  String _getDayName(int day) {
+    const days = [
+      'Lunes',
+      'Martes',
+      'Miércoles',
+      'Jueves',
+      'Viernes',
+      'Sábado',
+      'Domingo',
+    ];
+    return days[day - 1];
   }
 
   @override
   Widget build(BuildContext context) {
-    const accent = Color(0xFFBF5AF2);
-    const cardColor = Color(0xFF2C2C2E);
-    const textColor = Color(0xFFD9D9D9);
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xFFBF5AF2)),
+      );
+    }
 
-    return Stack(
-      children: [
-        FutureBuilder<List<Map<String, dynamic>>>(
-          future: _future,
-          builder: (context, snap) {
-            if (snap.connectionState == ConnectionState.waiting) {
-              return const Center(
-                child: CircularProgressIndicator(color: accent),
-              );
-            }
-            if (snap.hasError) {
-              return Center(
-                child: Text(
-                  'Error: ${snap.error}',
-                  style: TextStyle(color: accent),
-                ),
-              );
-            }
-            final items = snap.data ?? [];
-            if (items.isEmpty) {
-              return Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      'Sin planes asignados',
-                      style: TextStyle(color: textColor),
-                    ),
-                    const SizedBox(height: 12),
-                    FilledButton.icon(
-                      onPressed: _busy ? null : _assignPlanFlow,
-                      icon: const Icon(Icons.add),
-                      label: const Text('Asignar plan'),
-                    ),
-                  ],
-                ),
-              );
-            }
-            return RefreshIndicator(
-              color: accent,
-              onRefresh: () async =>
-                  setState(() => _future = _loadAssignedPlans()),
-              child: ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: items.length,
-                itemBuilder: (_, i) {
-                  final p = items[i];
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: cardColor,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white10),
-                    ),
-                    child: ListTile(
-                      title: Text(
-                        p['name'] ?? 'Plan',
-                        style: const TextStyle(color: textColor),
-                      ),
-                      subtitle: Text(
-                        p['goal'] ?? '—',
-                        style: const TextStyle(color: Colors.white70),
-                      ),
-                      trailing: IconButton(
-                        icon: const Icon(
-                          Icons.delete_outline,
-                          color: Colors.redAccent,
-                        ),
-                        onPressed: _busy
-                            ? null
-                            : () => _unassignPlan(p['assignment_id']),
-                      ),
-                    ),
-                  );
-                },
+    return ListView.separated(
+      padding: const EdgeInsets.all(16),
+      itemCount: 7,
+      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      itemBuilder: (context, index) {
+        final dayIndex = index + 1; // 1 a 7
+        final planData = _weeklySchedule[dayIndex];
+        final hasPlan = planData != null;
+
+        return InkWell(
+          onTap: () => _assignPlanToDay(dayIndex),
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            decoration: BoxDecoration(
+              color: hasPlan
+                  ? const Color(0xFFBF5AF2).withOpacity(0.15)
+                  : const Color(0xFF2C2C2E),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: hasPlan
+                    ? const Color(0xFFBF5AF2).withOpacity(0.5)
+                    : Colors.transparent,
               ),
-            );
-          },
-        ),
-        Positioned(
-          right: 16,
-          bottom: 16,
-          child: FloatingActionButton.extended(
-            backgroundColor: accent,
-            onPressed: _busy ? null : _assignPlanFlow,
-            icon: const Icon(Icons.add),
-            label: const Text('Asignar plan'),
+            ),
+            child: Row(
+              children: [
+                // Círculo con inicial del día
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: hasPlan
+                      ? const Color(0xFFBF5AF2)
+                      : Colors.white10,
+                  child: Text(
+                    _getDayName(dayIndex)[0],
+                    style: TextStyle(
+                      color: hasPlan ? Colors.white : Colors.white54,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+
+                // Texto del Plan
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _getDayName(dayIndex),
+                        style: const TextStyle(
+                          color: Colors.white54,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        hasPlan ? planData['name'] : 'Descanso / Sin asignar',
+                        style: TextStyle(
+                          color: hasPlan ? Colors.white : Colors.white38,
+                          fontSize: 16,
+                          fontWeight: hasPlan
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Icono de acción
+                if (hasPlan)
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white38),
+                    onPressed: () => _clearDay(dayIndex),
+                  )
+                else
+                  const Icon(Icons.add_circle_outline, color: Colors.white24),
+              ],
+            ),
           ),
-        ),
-      ],
+        );
+      },
     );
   }
 }
 
-class _AssignPlanSheet extends StatelessWidget {
+// --- SHEET PARA SELECCIONAR PLAN (Simplificado) ---
+class _PlanSelectorSheet extends StatelessWidget {
   final List<Map<String, dynamic>> plans;
-  final String clientName;
-  const _AssignPlanSheet({required this.plans, required this.clientName});
+  final String dayName;
+
+  const _PlanSelectorSheet({required this.plans, required this.dayName});
 
   @override
   Widget build(BuildContext context) {
-    const background = Color(0xFF1C1C1E);
-    const textColor = Color(0xFFD9D9D9);
-
     return SafeArea(
-      child: DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.7,
-        maxChildSize: 0.9,
-        builder: (_, controller) {
-          return Container(
-            decoration: const BoxDecoration(
-              color: background,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.6,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Text(
+              'Rutina para el $dayName',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
             ),
-            child: Column(
-              children: [
-                const SizedBox(height: 12),
-                Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade600,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Asignar plan a $clientName',
-                  style: const TextStyle(
-                    color: textColor,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: ListView.builder(
-                    controller: controller,
-                    itemCount: plans.length,
-                    itemBuilder: (_, i) {
-                      final p = plans[i];
-                      return ListTile(
-                        title: Text(
-                          p['name'] ?? 'Plan',
-                          style: const TextStyle(color: textColor),
-                        ),
-                        subtitle: Text(
-                          p['goal'] ?? '',
-                          style: const TextStyle(color: Colors.white70),
-                        ),
-                        onTap: () => Navigator.pop(context, p),
-                      );
-                    },
-                  ),
-                ),
-              ],
+            const SizedBox(height: 16),
+            Expanded(
+              child: ListView.builder(
+                itemCount: plans.length,
+                itemBuilder: (_, i) {
+                  final p = plans[i];
+                  return ListTile(
+                    title: Text(
+                      p['name'],
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    subtitle: Text(
+                      p['goal'] ?? '',
+                      style: const TextStyle(color: Colors.white54),
+                    ),
+                    leading: const Icon(
+                      Icons.fitness_center,
+                      color: Color(0xFFBF5AF2),
+                    ),
+                    onTap: () => Navigator.pop(context, p),
+                  );
+                },
+              ),
             ),
-          );
-        },
+          ],
+        ),
       ),
     );
   }
@@ -451,10 +418,7 @@ class _ProgresoTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Center(
-      child: Text(
-        'Progreso del cliente (solo lectura)',
-        style: TextStyle(color: Colors.white54),
-      ),
+      child: Text('Progreso...', style: TextStyle(color: Colors.white54)),
     );
   }
 }
@@ -462,7 +426,6 @@ class _ProgresoTab extends StatelessWidget {
 class _Tile extends StatelessWidget {
   final String label;
   final String? value;
-
   const _Tile({required this.label, required this.value});
 
   @override

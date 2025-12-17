@@ -83,10 +83,22 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
       final user = supa.auth.currentUser;
       if (user == null) return;
 
+      final appUser = await supa
+          .from('app_user')
+          .select('id, full_name, email')
+          .eq('email', user.email!)
+          .maybeSingle();
+
+      if (appUser == null) {
+        throw 'El usuario no existe. Debe registrarse primero.';
+      }
+
+      final appUserId = appUser['id'] as String;
+
       final res = await supa
           .from('client_trainer')
           .select('client_id, client:client_id(name)')
-          .eq('trainer_id', user.id);
+          .eq('trainer_id', appUserId);
 
       if (res is List && res.isNotEmpty) {
         setState(() {
