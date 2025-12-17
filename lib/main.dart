@@ -1,16 +1,19 @@
 import 'dart:async';
+import 'package:entrenador/features/client_home/main_layout_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 
 import 'common/services/user_service.dart';
-import 'features/client_home/client_home_screen.dart';
 import 'features/coach_home/coach_home_screen.dart';
 import 'features/clients/clients_page.dart';
 import 'features/admin/admin_home_screen.dart';
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  // 1. Aseguramos binding y preservamos el Splash Nativo
+  WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+  FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
@@ -25,6 +28,10 @@ Future<void> main() async {
   );
 
   await Supabase.initialize(url: supaUrl, anonKey: supaAnon);
+
+  // 2. Quitamos el Splash nativo cuando todo esté listo
+  FlutterNativeSplash.remove();
+
   runApp(const EntrenadorApp());
 }
 
@@ -92,122 +99,27 @@ class EntrenadorApp extends StatelessWidget {
         ),
         dialogTheme: const DialogThemeData(backgroundColor: Color(0xFF111111)),
       ),
-      home: const SplashScreen(),
+      // 3. Usamos el Wrapper para decidir la primera pantalla
+      home: const RootWrapper(),
     );
   }
 }
 
-class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key});
-  @override
-  State<SplashScreen> createState() => _SplashScreenState();
-}
-
-class _SplashScreenState extends State<SplashScreen>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c;
-  late final Animation<double> _opacity;
-  late final Animation<double> _scale;
-  late final Animation<double> _lineMove;
-
-  final Color _accent = const Color(0xFFBF5AF2);
-
-  @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 3500),
-    );
-
-    _opacity = CurvedAnimation(
-      parent: _c,
-      curve: const Interval(0.2, 1.0, curve: Curves.easeOut),
-    );
-    _scale = CurvedAnimation(
-      parent: _c,
-      curve: const Interval(0.3, 1.0, curve: Curves.easeOutBack),
-    );
-    _lineMove = CurvedAnimation(
-      parent: _c,
-      curve: const Interval(0.0, 0.8, curve: Curves.easeOut),
-    );
-
-    _c.forward().whenComplete(() async {
-      await Future.delayed(const Duration(milliseconds: 400));
-      if (!mounted) return;
-      final session = Supabase.instance.client.auth.currentSession;
-      final next = (session == null)
-          ? const OnboardingPage()
-          : const AuthGate();
-      Navigator.of(
-        context,
-      ).pushReplacement(MaterialPageRoute(builder: (_) => next));
-    });
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
+// --- NUEVO WIDGET: Decide qué pantalla mostrar al inicio ---
+class RootWrapper extends StatelessWidget {
+  const RootWrapper({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: AnimatedBuilder(
-        animation: _c,
-        builder: (context, _) {
-          final width = MediaQuery.of(context).size.width;
-          return Stack(
-            children: [
-              Positioned(
-                top: MediaQuery.of(context).size.height * 0.35,
-                left: -width * (1 - _lineMove.value),
-                child: Transform.rotate(
-                  angle: -0.05,
-                  child: Container(
-                    width: width * 1.2,
-                    height: 1.2,
-                    color: _accent,
-                  ),
-                ),
-              ),
-              Center(
-                child: Opacity(
-                  opacity: _opacity.value,
-                  child: Transform.scale(
-                    scale: 0.9 + 0.1 * _scale.value,
-                    child: Text(
-                      'Entrenador',
-                      style: TextStyle(
-                        color: _accent,
-                        fontSize: 48,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                bottom: MediaQuery.of(context).size.height * 0.35,
-                right: -width * (1 - _lineMove.value),
-                child: Transform.rotate(
-                  angle: -0.05,
-                  child: Container(
-                    width: width * 1.2,
-                    height: 1.2,
-                    color: _accent,
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
+    final session = Supabase.instance.client.auth.currentSession;
+
+    // Si no hay sesión, mostramos Onboarding (o Login)
+    if (session == null) {
+      return const OnboardingPage();
+    }
+
+    // Si hay sesión, vamos al Gate que decide el rol
+    return const AuthGate();
   }
 }
 
@@ -300,9 +212,13 @@ class _AuthGateState extends State<AuthGate> {
         }
 
         final role = snap.data;
+
+        // 4. LÓGICA DE RUTEO POR ROL
         if (role == 'admin') return const AdminHomeScreen();
         if (role == 'coach') return const CoachHomeScreen();
-        return const ClientHomeScreen();
+
+        // Si es cliente, cargamos la estructura con Bottom Bar
+        return const MainLayoutScreen();
       },
     );
   }
