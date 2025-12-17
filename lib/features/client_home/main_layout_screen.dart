@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-// IMPORTA TUS PANTALLAS AQUÍ
+
+// --- IMPORTS DE PANTALLAS ---
 import 'today_workout_screen.dart';
+// 1. Importamos la nueva pantalla de estadísticas
+import '../statistics/statistics_screen.dart';
 
 class MainLayoutScreen extends StatefulWidget {
   const MainLayoutScreen({super.key});
@@ -15,24 +18,26 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
   final SupabaseClient _supabase = Supabase.instance.client;
 
   // --- LISTA DE PANTALLAS ---
-  // Aquí defines qué pantalla se muestra en cada pestaña
-  final List<Widget> _pages = [
-    const TodayWorkoutScreen(), // 0: Home (Tu pantalla de hoy)
-    const Center(
-      child: Text(
-        'Estadísticas (Próximamente)',
-        style: TextStyle(color: Colors.white),
-      ),
-    ), // 1: Stats
+  // El orden aquí debe coincidir con el orden de los botones en el BottomNavigationBar
+  late final List<Widget> _pages = [
+    // 0: HOME
+    const TodayWorkoutScreen(),
+
+    // 1: ESTADÍSTICAS (Ya conectada)
+    const StatisticsScreen(),
+
+    // 2: NOTIFICACIONES (Placeholder)
     const Center(
       child: Text(
         'Notificaciones (Próximamente)',
         style: TextStyle(color: Colors.white),
       ),
-    ), // 2: Notis
+    ),
+
+    // 3: PERFIL (Placeholder)
     const Center(
       child: Text('Perfil de Usuario', style: TextStyle(color: Colors.white)),
-    ), // 3: Perfil
+    ),
   ];
 
   @override
@@ -45,6 +50,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
 
     return Scaffold(
       backgroundColor: backgroundColor,
+
       // EL BODY CAMBIA SEGÚN EL ÍNDICE SELECCIONADO
       body: _pages[_currentIndex],
 
@@ -78,7 +84,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
                 primaryColor: primaryColor,
               ),
 
-              // 3. NOTIFICACIONES (Con puntito morado/rosa como la foto)
+              // 3. NOTIFICACIONES (Con puntito morado/rosa)
               _buildNotificationItem(index: 2, isSelected: _currentIndex == 2),
 
               // 4. PERFIL (Avatar Circular)
@@ -94,7 +100,8 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
     );
   }
 
-  // --- WIDGET: Ítem Normal (Icono) ---
+  // --- WIDGETS AUXILIARES (Sin cambios) ---
+
   Widget _buildNavItem({
     required int index,
     required IconData icon,
@@ -106,13 +113,12 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
       icon: Icon(
         icon,
         size: 28,
-        // Si está seleccionado: Color Primario (o Blanco). Si no: Gris apagado
+        // Si está seleccionado: Color Blanco. Si no: Gris apagado
         color: isSelected ? Colors.white : Colors.white24,
       ),
     );
   }
 
-  // --- WIDGET: Notificaciones (Con Badge) ---
   Widget _buildNotificationItem({
     required int index,
     required bool isSelected,
@@ -123,7 +129,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
         IconButton(
           onPressed: () => setState(() => _currentIndex = index),
           icon: Icon(
-            Icons.notifications_rounded, // O la campana que prefieras
+            Icons.notifications_rounded,
             size: 28,
             color: isSelected ? Colors.white : Colors.white24,
           ),
@@ -136,9 +142,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
             width: 10,
             height: 10,
             decoration: BoxDecoration(
-              color: const Color(
-                0xFFD946EF,
-              ), // Un morado/rosa neón como la foto
+              color: const Color(0xFFD946EF), // Un morado/rosa neón
               shape: BoxShape.circle,
               border: Border.all(
                 color: const Color(0xFF1E1E1E),
@@ -151,7 +155,6 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
     );
   }
 
-  // --- WIDGET: Perfil (Avatar Real) ---
   Widget _buildProfileItem({
     required int index,
     required bool isSelected,
@@ -177,7 +180,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
               ? NetworkImage(avatarUrl)
               : const NetworkImage(
                   'https://i.pravatar.cc/150?img=5',
-                ), // Placeholder tipo la chica de la foto
+                ), // Placeholder
         ),
       ),
     );

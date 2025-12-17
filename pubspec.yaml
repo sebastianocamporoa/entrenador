@@ -22,6 +22,11 @@ dependencies:
   syncfusion_flutter_calendar: ^31.2.4
   # Agregamos url_launcher aquí porque lo usamos en el código anterior
   url_launcher: ^6.3.0 
+  pdf: ^3.10.0
+  path_provider: ^2.1.2
+  #open_file: ^3.3.2
+  http: ^1.2.0
+  open_filex: ^4.7.0
 
 dev_dependencies:
   flutter_test:
