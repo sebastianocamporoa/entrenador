@@ -63,11 +63,10 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
 
   // --- GENERAR DIETA PDF ---
   Future<void> _createDietPdf() async {
+    // 1. Validaciones básicas
     if (_weightCtrl.text.isEmpty || _heightCtrl.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Ingresa peso y altura para generar la dieta'),
-        ),
+        const SnackBar(content: Text('Ingresa peso y altura primero')),
       );
       return;
     }
@@ -78,34 +77,48 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       final user = _supa.auth.currentUser;
       if (user == null) return;
 
-      final userProfile = await _supa
+      final clientProfile = await _supa
           .from('app_user')
           .select('id')
           .eq('auth_user_id', user.id)
           .maybeSingle();
 
-      if (userProfile == null) return;
+      if (clientProfile == null) return;
 
-      final userClientId = userProfile['id'];
+      final clientId = clientProfile['id'];
 
-      // 1. Obtener ID real del cliente
+      // 2. Obtener datos del cliente (ID y Objetivo)
       final clientRes = await _supa
           .from('clients')
           .select('id, goal')
-          .eq('app_user_id', userClientId)
+          .eq('app_user_id', clientId)
           .maybeSingle();
 
       if (clientRes != null) {
-        List<String> photos = [];
-        // 2. Llamar al servicio
+        final clientId = clientRes['id'];
+
+        // --- NUEVO: OBTENER LAS FOTOS DE SUPABASE ---
+        // Buscamos las últimas 4 fotos subidas por este cliente
+        // para enviárselas a la IA.
+        final photosRes = await _supa
+            .from('progress_photos')
+            .select('url')
+            .eq('client_id', clientId)
+            .order('taken_at', ascending: false) // Las más recientes primero
+            .limit(4); // Máximo 4 fotos
+
+        // Convertimos la respuesta de la DB a una lista de Strings limpia
+        List<String> realPhotoUrls = List<String>.from(
+          (photosRes as List).map((item) => item['url']),
+        );
+
+        // 3. Llamar al servicio con las fotos REALES
         await _dietService.generateAndSaveDiet(
-          clientId: clientRes['id'],
+          clientId: clientId,
           currentWeight: double.parse(_weightCtrl.text),
           height: double.parse(_heightCtrl.text),
-          goal:
-              clientRes['goal'] ??
-              'Mejorar composición corporal', // Asegúrate de tener 'goal'
-          photoUrls: photos,
+          goal: clientRes['goal'] ?? 'Mejorar composición corporal',
+          photoUrls: realPhotoUrls, // <--- ¡AQUÍ ESTÁ LA MAGIA! 📸
         );
 
         if (mounted) {
