@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-// IMPORTA TU NUEVO SERVICIO
+// Asegúrate de que la ruta a tu servicio sea correcta
 import '../../common/services/diet_service.dart';
 
 class StatisticsScreen extends StatefulWidget {
@@ -14,6 +14,13 @@ class StatisticsScreen extends StatefulWidget {
 }
 
 class _StatisticsScreenState extends State<StatisticsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Apenas carga la pantalla, buscamos los datos anteriores
+    _loadLastMeasurement();
+  }
+
   final _supa = Supabase.instance.client;
   final _picker = ImagePicker();
 
@@ -28,9 +35,11 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   File? _imgLeft;
   File? _imgRight;
 
-  bool _isLoading = false;
-  bool _isGeneratingDiet = false; // Estado específico para la dieta
+  bool _isLoading = false; // Cargando subida de fotos
+  bool _isGeneratingDiet = false; // Cargando generación IA
+  bool _isLoadingDiet = false; // Cargando descarga de dieta existente
 
+  // --- SELECCIONAR FOTO ---
   Future<void> _pickImage(String type) async {
     try {
       final XFile? picked = await _picker.pickImage(
@@ -61,13 +70,75 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     }
   }
 
-  // --- GENERAR DIETA PDF ---
+  // --- 1. ABRIR DIETA EXISTENTE (SIN IA) ---
+  Future<void> _openExistingDiet() async {
+    setState(() => _isLoadingDiet = true);
+    try {
+      final user = _supa.auth.currentUser;
+      if (user == null) return;
+
+      // Obtener el ID del cliente
+      final clientRes = await _getClientId(user.id);
+      if (clientRes == null) {
+        if (mounted) _showSnack('Error: Cliente no encontrado', Colors.red);
+        return;
+      }
+
+      // Llamar al servicio para buscar la última dieta
+      final found = await _dietService.openLastDiet(clientRes['id']);
+
+      if (!found && mounted) {
+        _showSnack(
+          'No tienes ninguna dieta guardada aún. Genera una nueva.',
+          Colors.orange,
+        );
+      }
+    } catch (e) {
+      if (mounted) _showSnack('Error abriendo dieta: $e', Colors.red);
+    } finally {
+      if (mounted) setState(() => _isLoadingDiet = false);
+    }
+  }
+
+  // --- CARGAR ÚLTIMO PESO/ALTURA AUTOMÁTICAMENTE ---
+  Future<void> _loadLastMeasurement() async {
+    try {
+      final user = _supa.auth.currentUser;
+      if (user == null) return;
+
+      // 1. Obtener ID del cliente (reusamos tu helper)
+      final clientData = await _getClientId(user.id);
+      if (clientData == null) return;
+
+      // 2. Buscar la medición más reciente en la base de datos
+      final lastMeas = await _supa
+          .from('measurements')
+          .select('weight_kg, height_cm')
+          .eq('client_id', clientData['id'])
+          .order(
+            'date_at',
+            ascending: false,
+          ) // Ordenar por fecha (más nuevo primero)
+          .limit(1) // Solo queremos 1
+          .maybeSingle();
+
+      // 3. Si existe, rellenamos los campos de texto
+      if (lastMeas != null && mounted) {
+        setState(() {
+          _weightCtrl.text = lastMeas['weight_kg'].toString();
+          _heightCtrl.text = lastMeas['height_cm'].toString();
+        });
+      }
+    } catch (e) {
+      debugPrint('Error cargando datos previos: $e');
+    }
+  }
+
+  // --- 2. GENERAR NUEVA DIETA PDF (CON IA) ---
   Future<void> _createDietPdf() async {
-    // 1. Validaciones básicas
+    // Validaciones básicas
     if (_weightCtrl.text.isEmpty || _heightCtrl.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ingresa peso y altura primero')),
-      );
+      _showSnack('Ingresa peso y altura actual primero', Colors.orange);
       return;
     }
 
@@ -77,76 +148,52 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       final user = _supa.auth.currentUser;
       if (user == null) return;
 
-      final clientProfile = await _supa
-          .from('app_user')
-          .select('id')
-          .eq('auth_user_id', user.id)
-          .maybeSingle();
+      // A. Obtener datos del cliente (ID y Objetivo)
+      final clientData = await _getClientId(user.id, fetchGoal: true);
 
-      if (clientProfile == null) return;
+      if (clientData != null) {
+        final clientId = clientData['id'];
 
-      final clientId = clientProfile['id'];
-
-      // 2. Obtener datos del cliente (ID y Objetivo)
-      final clientRes = await _supa
-          .from('clients')
-          .select('id, goal')
-          .eq('app_user_id', clientId)
-          .maybeSingle();
-
-      if (clientRes != null) {
-        final clientId = clientRes['id'];
-
-        // --- NUEVO: OBTENER LAS FOTOS DE SUPABASE ---
-        // Buscamos las últimas 4 fotos subidas por este cliente
-        // para enviárselas a la IA.
+        // B. OBTENER LAS FOTOS RECIENTES DE SUPABASE
+        // Buscamos las últimas 4 fotos subidas para enviárselas a la IA.
         final photosRes = await _supa
             .from('progress_photos')
             .select('url')
             .eq('client_id', clientId)
-            .order('taken_at', ascending: false) // Las más recientes primero
-            .limit(4); // Máximo 4 fotos
+            .order('taken_at', ascending: false)
+            .limit(4);
 
-        // Convertimos la respuesta de la DB a una lista de Strings limpia
         List<String> realPhotoUrls = List<String>.from(
           (photosRes as List).map((item) => item['url']),
         );
 
-        // 3. Llamar al servicio con las fotos REALES
+        // C. Llamar al servicio (Edge Function)
         await _dietService.generateAndSaveDiet(
           clientId: clientId,
           currentWeight: double.parse(_weightCtrl.text),
           height: double.parse(_heightCtrl.text),
-          goal: clientRes['goal'] ?? 'Mejorar composición corporal',
-          photoUrls: realPhotoUrls, // <--- ¡AQUÍ ESTÁ LA MAGIA! 📸
+          goal: clientData['goal'] ?? 'Mejorar composición corporal',
+          photoUrls: realPhotoUrls, // ¡Fotos reales! 📸
         );
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('¡Dieta generada y descargada! 📄'),
-              backgroundColor: Colors.purpleAccent,
-            ),
+          _showSnack(
+            '¡Dieta generada y guardada exitosamente! 🥗',
+            Colors.purpleAccent,
           );
         }
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-        );
-      }
+      if (mounted) _showSnack('Error generando dieta: $e', Colors.red);
     } finally {
       if (mounted) setState(() => _isGeneratingDiet = false);
     }
   }
 
-  // --- GUARDAR MEDIDAS ---
+  // --- 3. GUARDAR REGISTRO (FOTOS Y MEDIDAS) ---
   Future<void> _saveCheckIn() async {
     if (_weightCtrl.text.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('El peso es obligatorio')));
+      _showSnack('El peso es obligatorio', Colors.red);
       return;
     }
 
@@ -156,25 +203,12 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       final user = _supa.auth.currentUser;
       if (user == null) throw Exception('No autenticado');
 
-      final userProfile = await _supa
-          .from('app_user')
-          .select('id')
-          .eq('auth_user_id', user.id)
-          .maybeSingle();
+      final clientData = await _getClientId(user.id);
+      if (clientData == null) throw Exception('Cliente no encontrado');
 
-      if (userProfile == null) return;
+      final clientId = clientData['id'];
 
-      final userClientId = userProfile['id'];
-
-      final clientRes = await _supa
-          .from('clients')
-          .select('id')
-          .eq('app_user_id', userClientId)
-          .maybeSingle();
-
-      if (clientRes == null) throw Exception('Cliente no encontrado');
-      final clientId = clientRes['id'];
-
+      // Insertar medidas
       final measurementData = await _supa
           .from('measurements')
           .insert({
@@ -189,6 +223,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
 
       final String measurementId = measurementData['id'];
 
+      // Subir fotos
       await Future.wait([
         if (_imgFront != null)
           _uploadAndSavePhoto(clientId, measurementId, _imgFront!, 'front'),
@@ -201,23 +236,41 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       ]);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('¡Medición guardada y perfil actualizado!'),
-            backgroundColor: Color(0xFFCCFF00),
-          ),
-        );
+        _showSnack('¡Registro guardado exitosamente!', const Color(0xFFCCFF00));
         _clearForm();
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-        );
-      }
+      if (mounted) _showSnack('Error: $e', Colors.red);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  // --- HELPERS ---
+
+  // Obtener ID del cliente desde la tabla 'app_user' -> 'clients'
+  Future<Map<String, dynamic>?> _getClientId(
+    String authUserId, {
+    bool fetchGoal = false,
+  }) async {
+    // 1. Buscar app_user
+    final userProfile = await _supa
+        .from('app_user')
+        .select('id')
+        .eq('auth_user_id', authUserId)
+        .maybeSingle();
+
+    if (userProfile == null) return null;
+    final userClientId = userProfile['id'];
+
+    // 2. Buscar clients
+    final selectQuery = fetchGoal ? 'id, goal' : 'id';
+
+    return await _supa
+        .from('clients')
+        .select(selectQuery)
+        .eq('app_user_id', userClientId)
+        .maybeSingle();
   }
 
   Future<void> _uploadAndSavePhoto(
@@ -248,9 +301,17 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       _imgBack = null;
       _imgLeft = null;
       _imgRight = null;
-      _weightCtrl.clear();
+      // No borramos peso/altura para que sea facil generar la dieta después
     });
   }
+
+  void _showSnack(String msg, Color color) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: color));
+  }
+
+  // --- UI ---
 
   @override
   Widget build(BuildContext context) {
@@ -334,7 +395,9 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
 
             const SizedBox(height: 40),
 
-            // BOTÓN 1: GUARDAR REGISTRO
+            // --- BOTONES DE ACCIÓN ---
+
+            // 1. GUARDAR REGISTRO (Principal)
             SizedBox(
               width: double.infinity,
               height: 55,
@@ -359,12 +422,50 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
               ),
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 30),
+            const Divider(color: Colors.white24),
+            const SizedBox(height: 10),
 
-            // BOTÓN 2: GENERAR DIETA IA (PDF)
+            const Text(
+              "Tu Plan Nutricional",
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 15),
+
+            // 2. VER DIETA ACTUAL (Botón Verde)
             SizedBox(
               width: double.infinity,
-              height: 55,
+              height: 50,
+              child: OutlinedButton.icon(
+                onPressed: _isLoadingDiet ? null : _openExistingDiet,
+                icon: _isLoadingDiet
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.description, color: Colors.greenAccent),
+                label: const Text("VER MI DIETA ACTUAL 🥗"),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.greenAccent,
+                  side: const BorderSide(color: Colors.greenAccent),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 15),
+
+            // 3. GENERAR NUEVA DIETA (Botón Morado)
+            SizedBox(
+              width: double.infinity,
+              height: 50,
               child: ElevatedButton.icon(
                 onPressed: _isGeneratingDiet ? null : _createDietPdf,
                 icon: _isGeneratingDiet
@@ -380,10 +481,10 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 label: Text(
                   _isGeneratingDiet
                       ? ' CREANDO PDF...'
-                      : ' GENERAR DIETA CON IA',
+                      : ' GENERAR NUEVA CON IA ✨',
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
-                    fontSize: 16,
+                    fontSize: 14,
                   ),
                 ),
                 style: ElevatedButton.styleFrom(

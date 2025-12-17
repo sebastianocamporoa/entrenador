@@ -9,63 +9,109 @@ import 'package:open_filex/open_filex.dart';
 class DietService {
   final _supa = Supabase.instance.client;
 
-  // Ya no necesitamos la API Key aquí. ¡Seguridad total! 🔒
-
+  // --- 1. GENERAR NUEVA DIETA (IA + BASE DE DATOS) ---
   Future<void> generateAndSaveDiet({
     required String clientId,
     required double currentWeight,
     required double height,
-    required String goal, // Agregamos el objetivo
-    List<String>? photoUrls, // Agregamos las fotos
+    required String goal,
+    List<String>? photoUrls,
   }) async {
-    // 1. LLAMADA A TU EDGE FUNCTION
-    // Le enviamos los datos y ella se encarga de todo
-    final FunctionResponse response = await _supa.functions.invoke(
-      'generate-diet',
-      body: {
-        'weight': currentWeight,
-        'height': height,
-        'goal': goal,
-        'photoUrls': photoUrls ?? [],
-      },
-    );
-
-    // Validamos respuesta
-    if (response.status != 200) {
-      throw Exception(
-        'Error del servidor: ${response.data['error'] ?? 'Desconocido'}',
+    try {
+      // A. LLAMADA A EDGE FUNCTION (IA)
+      final FunctionResponse response = await _supa.functions.invoke(
+        'generate-diet',
+        body: {
+          'weight': currentWeight,
+          'height': height,
+          'goal': goal,
+          'photoUrls': photoUrls ?? [],
+        },
       );
+
+      if (response.status != 200) {
+        throw Exception(
+          'Error del servidor: ${response.data['error'] ?? 'Desconocido'}',
+        );
+      }
+
+      final String dietContent = response.data['diet'];
+
+      // B. CREAR PDF
+      final pdfBytes = await _createPdfDocument(dietContent);
+
+      // C. GUARDAR EN TEMPORAL (Para abrirlo ya)
+      final output = await getTemporaryDirectory();
+      final file = File("${output.path}/dieta_ia.pdf");
+      await file.writeAsBytes(pdfBytes);
+
+      // D. SUBIR AL STORAGE
+      // Usamos un nombre único con timestamp
+      final fileName =
+          '${clientId}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+      await _supa.storage.from('diets').upload(fileName, file);
+
+      // E. GUARDAR REGISTRO EN BASE DE DATOS (NUEVO) 📝
+      // Esto nos permite saber cuál es la dieta actual del cliente
+      await _supa.from('diet_plans').insert({
+        'client_id': clientId,
+        'file_path': fileName,
+      });
+
+      // F. ABRIR EL ARCHIVO
+      await OpenFilex.open(file.path);
+    } catch (e) {
+      throw Exception('Error generando dieta: $e');
     }
-
-    final String dietContent = response.data['diet'];
-
-    // 2. Crear PDF (Igual que antes)
-    final pdfBytes = await _createPdfDocument(dietContent);
-
-    // 3. Guardar temporal y subir
-    final output = await getTemporaryDirectory();
-    final file = File("${output.path}/dieta_ia.pdf");
-    await file.writeAsBytes(pdfBytes);
-
-    final fileName = '${clientId}_${DateTime.now().millisecondsSinceEpoch}.pdf';
-    await _supa.storage.from('diets').upload(fileName, file);
-
-    // 4. Abrir
-    await OpenFilex.open(file.path);
   }
 
-  // --- GENERADOR PDF CORREGIDO ---
+  // --- 2. ABRIR ÚLTIMA DIETA EXISTENTE (AHORRO DE DINERO) 💰 ---
+  Future<bool> openLastDiet(String clientId) async {
+    try {
+      // A. Buscar en la base de datos la última dieta de este cliente
+      final data = await _supa
+          .from('diet_plans')
+          .select('file_path')
+          .eq('client_id', clientId)
+          .order('created_at', ascending: false) // La más reciente
+          .limit(1)
+          .maybeSingle();
+
+      // Si no hay registro, devolvemos false para que la UI sepa
+      if (data == null) return false;
+
+      final String filePath = data['file_path'];
+
+      // B. Descargar el archivo desde el Storage
+      final Uint8List fileBytes = await _supa.storage
+          .from('diets')
+          .download(filePath);
+
+      // C. Guardar en temporal y abrir
+      final output = await getTemporaryDirectory();
+      final file = File("${output.path}/ultima_dieta.pdf");
+      await file.writeAsBytes(fileBytes);
+
+      await OpenFilex.open(file.path);
+      return true; // Éxito
+    } catch (e) {
+      // Si falla (ej: borraron el archivo del storage manualmente), lanzamos error
+      print('Error recuperando dieta: $e');
+      throw Exception('No se pudo recuperar la dieta anterior');
+    }
+  }
+
+  // --- 3. GENERADOR DE PDF (CORREGIDO MULTIPAGE) ---
   Future<Uint8List> _createPdfDocument(String content) async {
     final pdf = pw.Document();
 
-    // Usamos MultiPage para que soporte textos largos y cree varias hojas
+    // Usamos MultiPage para soportar textos largos automáticamente
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
-        // MARGENES: Importante para que no se corte al imprimir
         margin: const pw.EdgeInsets.all(32),
 
-        // 1. EL ENCABEZADO (Se repite en cada página si quieres, o solo en la primera)
+        // Encabezado
         header: (pw.Context context) {
           return pw.Column(
             children: [
@@ -92,7 +138,7 @@ class DietService {
           );
         },
 
-        // 2. EL PIE DE PÁGINA
+        // Pie de página
         footer: (pw.Context context) {
           return pw.Container(
             alignment: pw.Alignment.centerRight,
@@ -104,15 +150,14 @@ class DietService {
           );
         },
 
-        // 3. EL CONTENIDO (La Dieta)
+        // Contenido
         build: (pw.Context context) {
           return [
             pw.Paragraph(
-              text: _removeEmojis(content), // Limpiamos emojis por si acaso
+              text: _removeEmojis(content),
               style: const pw.TextStyle(
                 fontSize: 12,
-                lineSpacing:
-                    1.5, // <--- CAMBIO IMPORTANTE: 1.5 es legible, 5 era excesivo
+                lineSpacing: 1.5, // Espaciado legible
               ),
             ),
           ];
@@ -123,11 +168,9 @@ class DietService {
     return pdf.save();
   }
 
-  // --- FUNCIÓN EXTRA: LIMPIAR EMOJIS ---
-  // El PDF base de Flutter a veces falla si la IA manda manzanas 🍎 o huevos 🍳
-  // Esta función simple quita caracteres que no sean texto básico.
+  // --- 4. UTILIDADES ---
   String _removeEmojis(String text) {
-    // Esta expresión regular deja solo texto, números, puntuación y saltos de línea
+    // Elimina caracteres que no sean texto básico para evitar errores de renderizado
     return text.replaceAll(RegExp(r'[^\x00-\x7F\u00C0-\u00FF\n\r\t]'), '');
   }
 }
