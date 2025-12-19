@@ -50,8 +50,10 @@ class ClientDetailPage extends StatelessWidget {
           children: [
             _DatosTab(c: c),
             _AgendaTab(clientId: c['id'], clientName: c['name'] ?? 'Cliente'),
-            _ProgresoTab(clientId: c['id']),
-            _DietTab(clientId: c['id']), // Widget actualizado abajo
+            _ProgresoTab(
+              clientId: c['id'],
+            ), // <--- Aquí está la magia de las fotos
+            _DietTab(clientId: c['id']),
           ],
         ),
       ),
@@ -60,7 +62,7 @@ class ClientDetailPage extends StatelessWidget {
 }
 
 // ==========================================
-// 1. TAB DE DATOS (Info General)
+// 1. TAB DE DATOS
 // ==========================================
 class _DatosTab extends StatelessWidget {
   final Map<String, dynamic> c;
@@ -133,7 +135,7 @@ class _DatosTab extends StatelessWidget {
 }
 
 // ==========================================
-// 2. TAB DE AGENDA (Asignar Rutinas)
+// 2. TAB DE AGENDA
 // ==========================================
 class _AgendaTab extends StatefulWidget {
   final String clientId;
@@ -176,7 +178,6 @@ class _AgendaTabState extends State<_AgendaTab> {
         });
       }
     } catch (e) {
-      debugPrint('Error cargando agenda: $e');
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -224,9 +225,9 @@ class _AgendaTabState extends State<_AgendaTab> {
 
       _loadSchedule();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Rutina asignada correctamente')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Rutina asignada')));
       }
     } catch (e) {
       debugPrint('Error asignando: $e');
@@ -318,7 +319,6 @@ class _AgendaTabState extends State<_AgendaTab> {
                           color: Colors.white54,
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
-                          letterSpacing: 1,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -352,7 +352,245 @@ class _AgendaTabState extends State<_AgendaTab> {
 }
 
 // ==========================================
-// 3. TAB DE NUTRICIÓN (ACTUALIZADO: "NutriMaster")
+// 3. TAB DE PROGRESO (CON VISOR DE FOTOS)
+// ==========================================
+class _ProgresoTab extends StatefulWidget {
+  final String clientId;
+  const _ProgresoTab({required this.clientId});
+
+  @override
+  State<_ProgresoTab> createState() => _ProgresoTabState();
+}
+
+class _ProgresoTabState extends State<_ProgresoTab> {
+  final _supa = Supabase.instance.client;
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _history = [];
+
+  double? _startWeight;
+  double? _currentWeight;
+  double? _totalChange;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProgressHistory();
+  }
+
+  Future<void> _loadProgressHistory() async {
+    try {
+      final data = await _supa
+          .from('measurements')
+          .select('id, weight_kg, height_cm, notes, date_at')
+          .eq('client_id', widget.clientId)
+          .order('date_at', ascending: false);
+
+      if (mounted) {
+        setState(() {
+          _history = List<Map<String, dynamic>>.from(data);
+
+          if (_history.isNotEmpty) {
+            _currentWeight = _history.first['weight_kg'];
+            _startWeight = _history.last['weight_kg'];
+            _totalChange = (_currentWeight! - _startWeight!);
+          }
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _showPhotosModal(String measurementId, String dateStr) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1C1C1E),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) =>
+          _PhotosSheet(measurementId: measurementId, dateLabel: dateStr),
+    );
+  }
+
+  String _formatDate(String isoString) {
+    final date = DateTime.parse(isoString);
+    return "${date.day}/${date.month}/${date.year}";
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xFFBF5AF2)),
+      );
+    }
+
+    if (_history.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.analytics_outlined,
+              size: 60,
+              color: Colors.white24,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Aún no hay registros de progreso',
+              style: TextStyle(color: Colors.white54),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        _buildSummaryCard(),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: _history.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              final item = _history[index];
+              final dateStr = _formatDate(item['date_at']);
+              final weight = item['weight_kg'];
+              final notes = item['notes'] ?? '';
+
+              return Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2C2C2E),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFBF5AF2).withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.scale,
+                      color: Color(0xFFBF5AF2),
+                      size: 20,
+                    ),
+                  ),
+                  title: Text(
+                    '$weight kg',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                    ),
+                  ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 4),
+                      Text(
+                        dateStr,
+                        style: const TextStyle(color: Colors.white54),
+                      ),
+                      if (notes.isNotEmpty)
+                        Text(
+                          notes,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white30,
+                            fontSize: 12,
+                          ),
+                        ),
+                    ],
+                  ),
+                  trailing: TextButton.icon(
+                    onPressed: () => _showPhotosModal(item['id'], dateStr),
+                    icon: const Icon(Icons.photo_library, size: 18),
+                    label: const Text('Fotos'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFFBF5AF2),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSummaryCard() {
+    if (_startWeight == null || _currentWeight == null)
+      return const SizedBox.shrink();
+
+    final isLoss = _totalChange! < 0;
+    final color = isLoss ? Colors.greenAccent : Colors.redAccent;
+
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFFBF5AF2).withOpacity(0.2),
+            const Color(0xFF1C1C1E),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          _buildStatItem('Inicio', '$_startWeight kg'),
+          Container(width: 1, height: 40, color: Colors.white12),
+          _buildStatItem('Actual', '$_currentWeight kg'),
+          Container(width: 1, height: 40, color: Colors.white12),
+          _buildStatItem(
+            'Cambio',
+            '${_totalChange! > 0 ? '+' : ''}${_totalChange!.toStringAsFixed(1)} kg',
+            valueColor: color,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatItem(String label, String value, {Color? valueColor}) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: const TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            color: valueColor ?? Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ==========================================
+// 4. TAB DE NUTRICIÓN
 // ==========================================
 class _DietTab extends StatefulWidget {
   final String clientId;
@@ -366,11 +604,10 @@ class _DietTabState extends State<_DietTab> {
   final _supa = Supabase.instance.client;
   final _dietService = DietService();
 
-  // Controladores
   final _weightCtrl = TextEditingController();
   final _heightCtrl = TextEditingController();
-  final _ageCtrl = TextEditingController(); // NUEVO: Edad
-  final _activityCtrl = TextEditingController(); // NUEVO: Actividad
+  final _ageCtrl = TextEditingController();
+  final _activityCtrl = TextEditingController();
   final _goalCtrl = TextEditingController();
 
   bool _isLoading = false;
@@ -383,11 +620,9 @@ class _DietTabState extends State<_DietTab> {
     _loadClientDataAndDiet();
   }
 
-  // Carga si ya tiene dieta y sus últimos datos físicos
   Future<void> _loadClientDataAndDiet() async {
     setState(() => _isLoading = true);
     try {
-      // 1. Buscar última dieta
       final dietRes = await _supa
           .from('diet_plans')
           .select('created_at')
@@ -396,7 +631,6 @@ class _DietTabState extends State<_DietTab> {
           .limit(1)
           .maybeSingle();
 
-      // 2. Buscar datos físicos recientes
       final measureRes = await _supa
           .from('measurements')
           .select('weight_kg, height_cm')
@@ -405,7 +639,6 @@ class _DietTabState extends State<_DietTab> {
           .limit(1)
           .maybeSingle();
 
-      // 3. Buscar objetivo del cliente
       final clientRes = await _supa
           .from('clients')
           .select('goal')
@@ -426,8 +659,6 @@ class _DietTabState extends State<_DietTab> {
           }
 
           _goalCtrl.text = clientRes['goal'] ?? 'Mejorar composición corporal';
-
-          // Valores por defecto para agilizar
           _ageCtrl.text = '25';
           _activityCtrl.text = 'Sedentario/Oficina';
 
@@ -440,19 +671,13 @@ class _DietTabState extends State<_DietTab> {
     }
   }
 
-  // Generar dieta con IA (NutriMaster)
   Future<void> _generateDiet() async {
-    // Validaciones
     if (_weightCtrl.text.isEmpty ||
         _heightCtrl.text.isEmpty ||
         _ageCtrl.text.isEmpty ||
         _activityCtrl.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Por favor completa todos los campos (Peso, Altura, Edad, Actividad)',
-          ),
-        ),
+        const SnackBar(content: Text('Completa todos los campos')),
       );
       return;
     }
@@ -460,7 +685,6 @@ class _DietTabState extends State<_DietTab> {
     setState(() => _isLoading = true);
 
     try {
-      // 1. Obtener fotos recientes del cliente
       final photosRes = await _supa
           .from('progress_photos')
           .select('url')
@@ -472,13 +696,12 @@ class _DietTabState extends State<_DietTab> {
         (photosRes as List).map((item) => item['url']),
       );
 
-      // 2. Llamar al servicio enviando los NUEVOS campos
       await _dietService.generateAndSaveDiet(
         clientId: widget.clientId,
         currentWeight: double.parse(_weightCtrl.text),
         height: double.parse(_heightCtrl.text),
-        age: int.parse(_ageCtrl.text), // <--- NUEVO
-        activity: _activityCtrl.text, // <--- NUEVO
+        age: int.parse(_ageCtrl.text),
+        activity: _activityCtrl.text,
         goal: _goalCtrl.text,
         photoUrls: photoUrls,
       );
@@ -486,11 +709,11 @@ class _DietTabState extends State<_DietTab> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('¡Plan "NutriMaster" generado con éxito!'),
+            content: Text('¡Plan "NutriMaster" generado!'),
             backgroundColor: Colors.green,
           ),
         );
-        _loadClientDataAndDiet(); // Recargar UI
+        _loadClientDataAndDiet();
       }
     } catch (e) {
       if (mounted) {
@@ -503,7 +726,6 @@ class _DietTabState extends State<_DietTab> {
     }
   }
 
-  // Ver dieta existente
   Future<void> _openDiet() async {
     setState(() => _isLoading = true);
     try {
@@ -532,7 +754,6 @@ class _DietTabState extends State<_DietTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Tarjeta de Estado
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -595,7 +816,6 @@ class _DietTabState extends State<_DietTab> {
           const Divider(color: Colors.white10),
           const SizedBox(height: 20),
 
-          // Formulario Generador
           const Text(
             "Generar Plan NutriMaster",
             style: TextStyle(
@@ -606,12 +826,11 @@ class _DietTabState extends State<_DietTab> {
           ),
           const SizedBox(height: 8),
           const Text(
-            "La IA analizará fotos, somatotipo y datos para crear 2 menús.",
+            "La IA analizará fotos, somatotipo y datos.",
             style: TextStyle(color: Colors.white54, fontSize: 13),
           ),
           const SizedBox(height: 20),
 
-          // FILA 1: Peso y Altura
           Row(
             children: [
               Expanded(
@@ -629,19 +848,14 @@ class _DietTabState extends State<_DietTab> {
           ),
           const SizedBox(height: 16),
 
-          // FILA 2: Edad (NUEVO)
           _buildInput(_ageCtrl, 'Edad (años)', Icons.cake),
           const SizedBox(height: 16),
-
-          // FILA 3: Actividad (NUEVO)
           _buildInput(
             _activityCtrl,
-            'Actividad (Ej: Oficina, Construcción)',
+            'Actividad (Ej: Oficina)',
             Icons.work_outline,
           ),
           const SizedBox(height: 16),
-
-          // FILA 4: Objetivo
           _buildInput(_goalCtrl, 'Objetivo del ciclo', Icons.flag),
 
           const SizedBox(height: 30),
@@ -673,7 +887,6 @@ class _DietTabState extends State<_DietTab> {
   }
 
   Widget _buildInput(TextEditingController ctrl, String label, IconData icon) {
-    // Definimos qué teclado usar según el campo
     TextInputType type = TextInputType.text;
     if (label.contains('Peso') ||
         label.contains('Altura') ||
@@ -695,24 +908,6 @@ class _DietTabState extends State<_DietTab> {
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
         ),
-      ),
-    );
-  }
-}
-
-// ==========================================
-// 4. TAB DE PROGRESO (PLACEHOLDER)
-// ==========================================
-class _ProgresoTab extends StatelessWidget {
-  final String clientId;
-  const _ProgresoTab({required this.clientId});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: Text(
-        'Gráficas de progreso aquí...',
-        style: TextStyle(color: Colors.white54),
       ),
     );
   }
@@ -794,6 +989,208 @@ class _PlanSelectorSheet extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ========================================================
+// VISOR DE FOTOS PARA PROGRESO (GRID + PANTALLA COMPLETA)
+// ========================================================
+class _PhotosSheet extends StatefulWidget {
+  final String measurementId;
+  final String dateLabel;
+
+  const _PhotosSheet({required this.measurementId, required this.dateLabel});
+
+  @override
+  State<_PhotosSheet> createState() => _PhotosSheetState();
+}
+
+class _PhotosSheetState extends State<_PhotosSheet> {
+  final _supa = Supabase.instance.client;
+  bool _isLoading = true;
+  Map<String, String> _photos = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPhotos();
+  }
+
+  Future<void> _loadPhotos() async {
+    try {
+      final data = await _supa
+          .from('progress_photos')
+          .select('kind, url')
+          .eq('measurement_id', widget.measurementId);
+
+      final Map<String, String> temp = {};
+      for (var item in data) {
+        temp[item['kind']] = item['url'];
+      }
+
+      if (mounted) {
+        setState(() {
+          _photos = temp;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      height: MediaQuery.of(context).size.height * 0.7,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'Registro del ${widget.dateLabel}',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          if (_isLoading)
+            const Expanded(
+              child: Center(
+                child: CircularProgressIndicator(color: Color(0xFFBF5AF2)),
+              ),
+            )
+          else if (_photos.isEmpty)
+            const Expanded(
+              child: Center(
+                child: Text(
+                  'Sin fotos adjuntas en este registro',
+                  style: TextStyle(color: Colors.white54),
+                ),
+              ),
+            )
+          else
+            Expanded(
+              child: GridView.count(
+                crossAxisCount: 2,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+                childAspectRatio: 0.7,
+                children: [
+                  _buildPhotoCard('Frente', _photos['front']),
+                  _buildPhotoCard('Espalda', _photos['back']),
+                  _buildPhotoCard('Perfil Izq', _photos['left']),
+                  _buildPhotoCard('Perfil Der', _photos['right']),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPhotoCard(String label, String? url) {
+    return GestureDetector(
+      onTap: () {
+        if (url != null) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => FullScreenImageView(imageUrl: url),
+            ),
+          );
+        }
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.black38,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white12),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (url != null)
+                Hero(
+                  tag: url, // Importante para la animación suave
+                  child: Image.network(url, fit: BoxFit.cover),
+                )
+              else
+                const Center(
+                  child: Icon(
+                    Icons.no_photography,
+                    color: Colors.white10,
+                    size: 40,
+                  ),
+                ),
+
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  color: Colors.black54,
+                  child: Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ==========================================
+// PANTALLA COMPLETA CON ZOOM
+// ==========================================
+class FullScreenImageView extends StatelessWidget {
+  final String imageUrl;
+  const FullScreenImageView({super.key, required this.imageUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        iconTheme: const IconThemeData(color: Colors.white),
+        elevation: 0,
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          panEnabled: true, // Permitir mover
+          minScale: 0.5,
+          maxScale: 4.0, // Zoom hasta 4x
+          child: Hero(tag: imageUrl, child: Image.network(imageUrl)),
         ),
       ),
     );
