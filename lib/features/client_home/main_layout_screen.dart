@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'today_workout_screen.dart';
 // 1. Importamos la nueva pantalla de estadísticas
 import '../statistics/statistics_screen.dart';
+import '../profile/profile_screen.dart';
 
 class MainLayoutScreen extends StatefulWidget {
   const MainLayoutScreen({super.key});
@@ -35,9 +36,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
     ),
 
     // 3: PERFIL (Placeholder)
-    const Center(
-      child: Text('Perfil de Usuario', style: TextStyle(color: Colors.white)),
-    ),
+    const ProfileScreen(),
   ];
 
   @override

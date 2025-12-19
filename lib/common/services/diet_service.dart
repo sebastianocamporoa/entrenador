@@ -15,6 +15,8 @@ class DietService {
     required double currentWeight,
     required double height,
     required String goal,
+    required int age,
+    required String activity,
     List<String>? photoUrls,
   }) async {
     try {
@@ -25,6 +27,8 @@ class DietService {
           'weight': currentWeight,
           'height': height,
           'goal': goal,
+          'age': age,
+          'activity_level': activity,
           'photoUrls': photoUrls ?? [],
         },
       );
