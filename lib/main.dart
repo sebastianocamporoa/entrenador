@@ -1,12 +1,16 @@
 import 'dart:async';
-import 'package:entrenador/features/client_home/main_layout_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 
+// --- SERVICIOS ---
 import 'common/services/user_service.dart';
+
+// --- PANTALLAS ---
+import 'features/client_home/main_layout_screen.dart';
 import 'features/coach_home/coach_home_screen.dart';
+import 'features/coach_home/trainer_main_layout.dart'; // <--- IMPORT NUEVO
 import 'features/clients/clients_page.dart';
 import 'features/admin/admin_home_screen.dart';
 
@@ -105,7 +109,7 @@ class EntrenadorApp extends StatelessWidget {
   }
 }
 
-// --- NUEVO WIDGET: Decide qué pantalla mostrar al inicio ---
+// --- Wrapper que decide si mostramos Login o App ---
 class RootWrapper extends StatelessWidget {
   const RootWrapper({super.key});
 
@@ -123,6 +127,7 @@ class RootWrapper extends StatelessWidget {
   }
 }
 
+// --- Gate que decide qué pantalla mostrar según el ROL ---
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
   @override
@@ -213,11 +218,15 @@ class _AuthGateState extends State<AuthGate> {
 
         final role = snap.data;
 
-        // 4. LÓGICA DE RUTEO POR ROL
-        if (role == 'admin') return const AdminHomeScreen();
-        if (role == 'coach') return const CoachHomeScreen();
+        // --- LÓGICA DE RUTEO POR ROL ---
 
-        // Si es cliente, cargamos la estructura con Bottom Bar
+        if (role == 'admin') return const AdminHomeScreen();
+
+        // ¡CAMBIO AQUÍ!
+        // Si es entrenador, usamos el nuevo Layout con barra inferior
+        if (role == 'coach') return const TrainerMainLayout();
+
+        // Si es cliente, cargamos la estructura normal de cliente
         return const MainLayoutScreen();
       },
     );
@@ -238,7 +247,7 @@ class _AuthGateState extends State<AuthGate> {
       if (exists == null) {
         await supa.from('app_user').insert({
           'auth_user_id': user.id,
-          'role': 'coach',
+          'role': 'coach', // Default temporal si te registras por primera vez
           'full_name':
               user.userMetadata?['full_name'] ?? user.email?.split('@').first,
           'email': user.email,
@@ -478,38 +487,6 @@ class _LoginPageState extends State<LoginPage> {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class HomePage extends StatelessWidget {
-  const HomePage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Entrenador'),
-        actions: [
-          IconButton(
-            tooltip: 'Cerrar sesión',
-            onPressed: () async {
-              await Supabase.instance.client.auth.signOut();
-            },
-            icon: const Icon(Icons.logout),
-          ),
-        ],
-      ),
-      body: Center(
-        child: FilledButton(
-          onPressed: () {
-            Navigator.of(
-              context,
-            ).push(MaterialPageRoute(builder: (_) => const ClientsPage()));
-          },
-          child: const Text('Ir a Clientes'),
         ),
       ),
     );
