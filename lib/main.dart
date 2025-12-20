@@ -10,7 +10,7 @@ import 'common/services/user_service.dart';
 // --- PANTALLAS ---
 import 'features/client_home/main_layout_screen.dart';
 import 'features/coach_home/coach_home_screen.dart';
-import 'features/coach_home/trainer_main_layout.dart'; // <--- IMPORT NUEVO
+import 'features/coach_home/trainer_main_layout.dart';
 import 'features/clients/clients_page.dart';
 import 'features/admin/admin_home_screen.dart';
 
@@ -103,7 +103,6 @@ class EntrenadorApp extends StatelessWidget {
         ),
         dialogTheme: const DialogThemeData(backgroundColor: Color(0xFF111111)),
       ),
-      // 3. Usamos el Wrapper para decidir la primera pantalla
       home: const RootWrapper(),
     );
   }
@@ -117,12 +116,10 @@ class RootWrapper extends StatelessWidget {
   Widget build(BuildContext context) {
     final session = Supabase.instance.client.auth.currentSession;
 
-    // Si no hay sesión, mostramos Onboarding (o Login)
     if (session == null) {
       return const OnboardingPage();
     }
 
-    // Si hay sesión, vamos al Gate que decide el rol
     return const AuthGate();
   }
 }
@@ -218,15 +215,8 @@ class _AuthGateState extends State<AuthGate> {
 
         final role = snap.data;
 
-        // --- LÓGICA DE RUTEO POR ROL ---
-
         if (role == 'admin') return const AdminHomeScreen();
-
-        // ¡CAMBIO AQUÍ!
-        // Si es entrenador, usamos el nuevo Layout con barra inferior
         if (role == 'coach') return const TrainerMainLayout();
-
-        // Si es cliente, cargamos la estructura normal de cliente
         return const MainLayoutScreen();
       },
     );
@@ -247,7 +237,7 @@ class _AuthGateState extends State<AuthGate> {
       if (exists == null) {
         await supa.from('app_user').insert({
           'auth_user_id': user.id,
-          'role': 'coach', // Default temporal si te registras por primera vez
+          'role': 'coach',
           'full_name':
               user.userMetadata?['full_name'] ?? user.email?.split('@').first,
           'email': user.email,
@@ -340,6 +330,10 @@ class _LoginPageState extends State<LoginPage> {
     final subtitle = isLogin ? 'Entrena con nosotros' : 'Comienza tu viaje';
     final action = isLogin ? 'Entrar' : 'Registrarme';
 
+    // 1. Detectar si el teclado está abierto
+    final isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
+    final size = MediaQuery.of(context).size;
+
     return Scaffold(
       resizeToAvoidBottomInset: true,
       body: SafeArea(
@@ -349,8 +343,14 @@ class _LoginPageState extends State<LoginPage> {
               children: [
                 ClipPath(
                   clipper: _DiagonalClipper(),
-                  child: SizedBox(
-                    height: MediaQuery.of(context).size.height * 0.52,
+                  // 2. Usar AnimatedContainer para suavizar el cambio de altura
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                    // Si el teclado está abierto, reducimos la altura al 25%, si no, 52%
+                    height: isKeyboardOpen
+                        ? size.height * 0.25
+                        : size.height * 0.52,
                     width: double.infinity,
                     child: Image.asset(
                       'assets/login_bg.jpg',
@@ -374,29 +374,39 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ),
                 ),
-                Positioned(
+                // 3. Ocultar el texto grande cuando el teclado está abierto
+                // para que no estorbe visualmente en el espacio reducido
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 300),
                   left: 24,
-                  bottom: 100,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 30,
-                          fontWeight: FontWeight.w400,
+                  // Movemos el texto un poco más abajo si el teclado está abierto, o lo ocultamos
+                  bottom: isKeyboardOpen ? 20 : 100,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 200),
+                    opacity: isKeyboardOpen
+                        ? 0.0
+                        : 1.0, // Desaparece al escribir
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 30,
+                            fontWeight: FontWeight.w400,
+                          ),
                         ),
-                      ),
-                      Text(
-                        subtitle,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 30,
-                          fontWeight: FontWeight.w800,
+                        Text(
+                          subtitle,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 30,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ],
