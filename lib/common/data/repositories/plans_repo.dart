@@ -72,7 +72,22 @@ class PlansRepo {
     String planId,
     List<TrainingPlanExercise> list,
   ) async {
-    final data = list.map((e) => e.toMap()).toList();
+    // CORRECCIÓN AQUÍ: Usamos .toInsert() en lugar de .toMap()
+    final data = list.map((e) => e.toInsert()).toList();
+
     await _supa.from('training_plan_exercise').insert(data);
+  }
+
+  Future<void> updateExercise(TrainingPlanExercise exercise) async {
+    // Usamos toInsert() pero removemos 'id' para que no intente cambiarlo si no es necesario,
+    // o simplemente usamos el map completo. Para update, necesitamos asegurar que el ID vaya en el query.
+    final data = exercise.toInsert();
+    // Eliminamos 'id' del cuerpo del update para evitar conflictos, aunque Supabase suele ignorarlo en updates si coincide.
+    // Lo importante es el .eq('id', exercise.id)
+
+    await _supa
+        .from('training_plan_exercise')
+        .update(data)
+        .eq('id', exercise.id);
   }
 }
