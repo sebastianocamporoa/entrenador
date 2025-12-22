@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+// --- IMPORTA TU PANTALLA DE EJERCICIOS ---
+// Ajusta la ruta si tu estructura es diferente (ej: '../../features/admin/exercises_screen.dart')
+import '../admin/exercises_screen.dart';
+
 class TrainerProfileScreen extends StatefulWidget {
   const TrainerProfileScreen({super.key});
 
@@ -32,17 +36,18 @@ class _TrainerProfileScreenState extends State<TrainerProfileScreen> {
   Widget build(BuildContext context) {
     final user = _supa.auth.currentUser;
     final email = user?.email ?? 'Entrenador';
-    // Intentamos obtener el nombre de la metadata
     final name = user?.userMetadata?['full_name'] ?? 'Coach';
 
     return Scaffold(
       backgroundColor: const Color(0xFF1C1C1E),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
+          // Agregado scroll por si la pantalla es pequeña
           padding: const EdgeInsets.all(24.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              const SizedBox(height: 20),
               // Avatar
               Container(
                 padding: const EdgeInsets.all(4),
@@ -94,9 +99,66 @@ class _TrainerProfileScreenState extends State<TrainerProfileScreen> {
                 ),
               ),
 
-              const SizedBox(height: 60),
+              const SizedBox(height: 50),
 
-              // Botón Cerrar Sesión
+              // --- NUEVO: MENÚ DE OPCIONES ---
+
+              // 1. Biblioteca de Ejercicios
+              Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2C2C2E),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white.withOpacity(0.05)),
+                ),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.all(16),
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFBF5AF2).withOpacity(0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.fitness_center,
+                      color: Color(0xFFBF5AF2),
+                      size: 24,
+                    ),
+                  ),
+                  title: const Text(
+                    'Biblioteca de Ejercicios',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                  subtitle: const Padding(
+                    padding: EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Crea tus ejercicios y consulta los globales',
+                      style: TextStyle(color: Colors.white54, fontSize: 12),
+                    ),
+                  ),
+                  trailing: const Icon(
+                    Icons.chevron_right,
+                    color: Colors.white24,
+                  ),
+                  onTap: () {
+                    // Navegamos a la pantalla de ejercicios en MODO COACH
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            const ExercisesScreen(isCoachMode: true),
+                      ),
+                    );
+                  },
+                ),
+              ),
+
+              const SizedBox(height: 30),
+
+              // 2. Botón Cerrar Sesión
               SizedBox(
                 width: double.infinity,
                 height: 55,
@@ -123,6 +185,8 @@ class _TrainerProfileScreenState extends State<TrainerProfileScreen> {
                   label: Text(_isLoading ? 'Cerrando...' : 'CERRAR SESIÓN'),
                 ),
               ),
+
+              const SizedBox(height: 30),
             ],
           ),
         ),
