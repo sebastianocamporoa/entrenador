@@ -50,15 +50,35 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
   }
 
   void _initializeDates() {
+    // 1. Si estamos editando, precargar datos existentes
     if (widget.existingSession != null) {
       _prefillIfEditing();
       return;
     }
 
+    // 2. Si venimos de un clic en el calendario (Nueva sesión en hora específica)
     if (widget.initialDate != null) {
       final d = widget.initialDate!;
+
+      // Configurar fechas
       _startDate = DateTime(d.year, d.month, d.day);
+      // Por defecto dejamos la fecha fin igual a la inicio (o +7 días si prefieres mantener tu lógica de rangos)
       _endDate = _startDate.add(const Duration(days: 7));
+
+      // --- CORRECCIÓN AQUÍ ---
+      // Actualizamos la hora de inicio con la hora de la celda tocada
+      _startTime = TimeOfDay.fromDateTime(d);
+
+      // Calculamos la hora fin (por ejemplo, 1 hora después)
+      final endD = d.add(const Duration(hours: 1));
+      _endTime = TimeOfDay.fromDateTime(endD);
+
+      // Opcional: Marcar automáticamente el día de la semana correspondiente
+      // Si toqué un Martes, que se active la 'M' automáticamente
+      final wdLetter = _weekdayToLetter(d.weekday);
+      if (_days.containsKey(wdLetter)) {
+        _days[wdLetter] = true;
+      }
     }
   }
 

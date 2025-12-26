@@ -60,10 +60,19 @@ class _CoachHomeScreenState extends State<CoachHomeScreen> {
         id: s.id,
         startTime: s.startTime.toLocal(),
         endTime: s.endTime.toLocal(),
-        subject: s.notes ?? (s.clientName ?? 'Sesión'),
+
+        // --- CAMBIO AQUÍ ---
+        // Antes tenías: s.notes ?? ...
+        // Ahora ponemos el nombre del cliente como prioridad:
+        subject: s.clientName ?? 'Sin Cliente',
+
         color: _getColorForClient(s.clientId),
         isAllDay: false,
-        notes: s.clientName ?? '',
+
+        // Y movemos las notas a la propiedad 'notes' del calendario
+        // para que no se pierdan (se verán si inspeccionas el objeto)
+        notes: s.notes,
+
         location: s.started.toString(),
         recurrenceId: s.clientId,
       );
