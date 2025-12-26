@@ -326,8 +326,10 @@ class _LoginPageState extends State<LoginPage> {
     final theme = Theme.of(context);
     final formBackground = const Color(0xFF111111);
 
-    final title = isLogin ? 'Bienvenido de nuevo,' : 'Crea tu cuenta';
-    final subtitle = isLogin ? 'Entrena con nosotros' : 'Comienza tu viaje';
+    final title = isLogin ? 'Nadie va a entrenar por ti.' : 'Crea tu cuenta';
+    final subtitle = isLogin
+        ? 'Entra, cumple y evoluciona.'
+        : 'Comienza tu viaje';
     final action = isLogin ? 'Entrar' : 'Registrarme';
 
     // 1. Detectar si el teclado está abierto
@@ -517,21 +519,33 @@ class _OnboardingPageState extends State<OnboardingPage> {
   final _pages = [
     _OnboardData(
       image: 'assets/onboard1.jpg',
-      title: 'Conecta con tu entrenador',
-      subtitle: 'Empieza tu transformación hoy',
+      title: 'Cada entrenamiento que completas aquí es una victoria real.',
+      subtitle: 'Avanza hoy, tu progreso ya empezó.',
     ),
     _OnboardData(
       image: 'assets/onboard2.jpg',
-      title: 'Planes hechos para ti',
-      subtitle: 'Entrena con propósito y constancia',
+      title: 'Entrenar no es castigo, es autocuidado.',
+      subtitle:
+          'Estás construyendo una versión de ti que se siente mejor cada día.',
     ),
     _OnboardData(
       image: 'assets/onboard3.jpg',
-      title: 'Mide tu progreso',
-      subtitle: 'Ve tus resultados y supera tus límites',
+      title: 'No entrenas solo.',
+      subtitle:
+          'Aquí hay un plan, un seguimiento y un sistema diseñado para apoyarte.',
       showButton: true,
     ),
   ];
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Esto precarga todas las imágenes en la memoria caché del dispositivo
+    // para que al deslizar ya estén listas y no haya retraso.
+    for (final page in _pages) {
+      precacheImage(AssetImage(page.image), context);
+    }
+  }
 
   void _next() {
     if (_page < _pages.length - 1) {
@@ -560,10 +574,13 @@ class _OnboardingPageState extends State<OnboardingPage> {
             controller: _controller,
             onPageChanged: (i) => setState(() => _page = i),
             itemCount: _pages.length,
-            itemBuilder: (_, i) => _OnboardSlide(data: _pages[i]),
+            // AQUÍ PASAMOS LA FUNCIÓN _next
+            itemBuilder: (_, i) =>
+                _OnboardSlide(data: _pages[i], onNext: _next),
           ),
+          // Indicadores (Puntos)
           Positioned(
-            bottom: 70,
+            bottom: 40, // Los bajé un poco más (antes 70)
             child: Row(
               children: List.generate(
                 _pages.length,
@@ -580,29 +597,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
               ),
             ),
           ),
-          if (_pages[_page].showButton)
-            Positioned(
-              bottom: 120,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 36,
-                    vertical: 14,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(50),
-                  ),
-                ),
-                onPressed: _next,
-                child: const Text(
-                  'Comienza ahora!',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
+          // ¡YA NO EXISTE EL POSITIONED DEL BOTÓN AQUÍ!
         ],
       ),
     );
@@ -625,12 +620,15 @@ class _OnboardData {
 
 class _OnboardSlide extends StatelessWidget {
   final _OnboardData data;
-  const _OnboardSlide({required this.data});
+  final VoidCallback? onNext;
+
+  const _OnboardSlide({required this.data, this.onNext});
 
   @override
   Widget build(BuildContext context) {
     final background = Theme.of(context).scaffoldBackgroundColor;
     final textColor = Theme.of(context).colorScheme.onSurface;
+    final size = MediaQuery.of(context).size;
 
     return Container(
       color: background,
@@ -641,7 +639,8 @@ class _OnboardSlide extends StatelessWidget {
             child: Stack(
               children: [
                 SizedBox(
-                  height: MediaQuery.of(context).size.height * 0.6,
+                  // 2. REDUCIMOS AL 50% (antes 0.6) para dar espacio al texto
+                  height: size.height * 0.6,
                   width: double.infinity,
                   child: Image.asset(data.image, fit: BoxFit.cover),
                 ),
@@ -663,35 +662,65 @@ class _OnboardSlide extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.start,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  const SizedBox(height: 20),
-                  Text(
-                    data.title,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: textColor,
-                      fontSize: 28,
-                      fontWeight: FontWeight.w500,
-                      height: 1.1,
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 10, 24, 30),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      data.title,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: textColor,
+                        fontSize: 29,
+                        // CAMBIO 1: Título en Negrita fuerte
+                        fontWeight: FontWeight.bold,
+                        height: 1.1,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    data.subtitle,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: textColor,
-                      fontSize: 34,
-                      fontWeight: FontWeight.w800,
-                      height: 1.1,
+                    const SizedBox(height: 16),
+                    Text(
+                      data.subtitle,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: textColor,
+                        fontSize: 19,
+                        // CAMBIO 2: Subtítulo un poco más grueso (SemiBold)
+                        fontWeight: FontWeight.w600,
+                        height: 1.3,
+                      ),
                     ),
-                  ),
-                ],
+
+                    if (data.showButton) ...[
+                      const SizedBox(height: 40),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 36,
+                            vertical: 14,
+                          ),
+                          backgroundColor: Theme.of(context).primaryColor,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(50),
+                          ),
+                        ),
+                        onPressed: onNext,
+                        child: const Text(
+                          'Comienza ahora!',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 50),
+                    ],
+                  ],
+                ),
               ),
             ),
           ),
