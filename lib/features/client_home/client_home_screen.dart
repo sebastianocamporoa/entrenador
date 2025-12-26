@@ -63,13 +63,19 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
           .eq('app_user_id', internalId)
           .maybeSingle();
 
-      if (clientData == null) return;
+      // --- CORRECCIÓN ---
+      bool needsOnboarding = false;
 
-      // 3. Verificar si algún campo clave está vacío o nulo
-      final needsOnboarding =
-          clientData['sex'] == null ||
-          clientData['phone'] == null ||
-          clientData['goal'] == null;
+      if (clientData == null) {
+        // Si NO existe el registro en la tabla clients, DEFINITIVAMENTE es nuevo
+        needsOnboarding = true;
+      } else {
+        // Si existe, verificamos si le faltan datos
+        needsOnboarding =
+            clientData['sex'] == null ||
+            clientData['phone'] == null ||
+            clientData['goal'] == null;
+      }
 
       if (needsOnboarding) {
         if (!mounted) return;
@@ -78,11 +84,11 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
         await Navigator.of(context).push(
           MaterialPageRoute(
             builder: (_) => const ClientOnboardingWizard(),
-            fullscreenDialog: true, // Animación deslizante desde abajo
+            fullscreenDialog: true,
           ),
         );
 
-        // Al volver, recargamos por si acaso
+        // Al volver, recargamos
         _loadData();
       }
     } catch (e) {

@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-// --- IMPORTS DE PANTALLAS ---
 import 'today_workout_screen.dart';
-// 1. Importamos la nueva pantalla de estadísticas
 import '../statistics/statistics_screen.dart';
 import '../profile/profile_screen.dart';
+import '../client_onboarding/client_onboarding_wizard.dart';
 
 class MainLayoutScreen extends StatefulWidget {
   const MainLayoutScreen({super.key});
@@ -18,30 +17,72 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
   int _currentIndex = 0;
   final SupabaseClient _supabase = Supabase.instance.client;
 
-  // --- LISTA DE PANTALLAS ---
-  // El orden aquí debe coincidir con el orden de los botones en el BottomNavigationBar
   late final List<Widget> _pages = [
-    // 0: HOME
     const TodayWorkoutScreen(),
-
-    // 1: ESTADÍSTICAS (Ya conectada)
     const StatisticsScreen(),
-
-    // 2: NOTIFICACIONES (Placeholder)
     const Center(
       child: Text(
         'Notificaciones (Próximamente)',
         style: TextStyle(color: Colors.white),
       ),
     ),
-
-    // 3: PERFIL (Placeholder)
     const ProfileScreen(),
   ];
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkOnboarding();
+    });
+  }
+
+  Future<void> _checkOnboarding() async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final appUser = await _supabase
+          .from('app_user')
+          .select('id')
+          .eq('auth_user_id', user.id)
+          .maybeSingle();
+
+      if (appUser == null) return;
+      final internalId = appUser['id'];
+
+      final clientData = await _supabase
+          .from('clients')
+          .select('sex, phone, goal')
+          .eq('app_user_id', internalId)
+          .maybeSingle();
+
+      bool needsOnboarding = false;
+
+      if (clientData == null) {
+        needsOnboarding = true;
+      } else {
+        needsOnboarding =
+            clientData['sex'] == null ||
+            clientData['phone'] == null ||
+            clientData['goal'] == null;
+      }
+
+      if (needsOnboarding && mounted) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const ClientOnboardingWizard(),
+            fullscreenDialog: true,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error verificando onboarding: $e');
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Usamos los colores de tu tema actual
     final theme = Theme.of(context);
     final backgroundColor = theme.scaffoldBackgroundColor;
     final surfaceColor = theme.colorScheme.surface;
@@ -49,15 +90,11 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
 
     return Scaffold(
       backgroundColor: backgroundColor,
-
-      // EL BODY CAMBIA SEGÚN EL ÍNDICE SELECCIONADO
       body: _pages[_currentIndex],
-
-      // BARRA DE NAVEGACIÓN PERSONALIZADA
       bottomNavigationBar: Container(
-        height: 80, // Altura cómoda para el dedo
+        height: 80,
         decoration: BoxDecoration(
-          color: surfaceColor, // Color gris oscuro de tus tarjetas
+          color: surfaceColor,
           border: Border(
             top: BorderSide(color: Colors.white.withOpacity(0.05)),
           ),
@@ -67,26 +104,19 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // 1. HOME
               _buildNavItem(
                 index: 0,
                 icon: Icons.home_filled,
                 isSelected: _currentIndex == 0,
                 primaryColor: primaryColor,
               ),
-
-              // 2. ESTADÍSTICAS
               _buildNavItem(
                 index: 1,
                 icon: Icons.bar_chart_rounded,
                 isSelected: _currentIndex == 1,
                 primaryColor: primaryColor,
               ),
-
-              // 3. NOTIFICACIONES (Con puntito morado/rosa)
               _buildNotificationItem(index: 2, isSelected: _currentIndex == 2),
-
-              // 4. PERFIL (Avatar Circular)
               _buildProfileItem(
                 index: 3,
                 isSelected: _currentIndex == 3,
@@ -99,8 +129,6 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
     );
   }
 
-  // --- WIDGETS AUXILIARES (Sin cambios) ---
-
   Widget _buildNavItem({
     required int index,
     required IconData icon,
@@ -112,7 +140,6 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
       icon: Icon(
         icon,
         size: 28,
-        // Si está seleccionado: Color Blanco. Si no: Gris apagado
         color: isSelected ? Colors.white : Colors.white24,
       ),
     );
@@ -133,7 +160,6 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
             color: isSelected ? Colors.white : Colors.white24,
           ),
         ),
-        // El puntito (Badge)
         Positioned(
           top: 10,
           right: 10,
@@ -141,12 +167,9 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
             width: 10,
             height: 10,
             decoration: BoxDecoration(
-              color: const Color(0xFFD946EF), // Un morado/rosa neón
+              color: const Color(0xFFD946EF),
               shape: BoxShape.circle,
-              border: Border.all(
-                color: const Color(0xFF1E1E1E),
-                width: 2,
-              ), // Borde para separar del icono
+              border: Border.all(color: const Color(0xFF1E1E1E), width: 2),
             ),
           ),
         ),
@@ -159,27 +182,23 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
     required bool isSelected,
     required Color primaryColor,
   }) {
-    // Obtenemos la URL del avatar de Supabase (si existe)
     final user = _supabase.auth.currentUser;
     final avatarUrl = user?.userMetadata?['avatar_url'];
 
     return GestureDetector(
       onTap: () => setState(() => _currentIndex = index),
       child: Container(
-        padding: const EdgeInsets.all(2), // Espacio para el borde de selección
+        padding: const EdgeInsets.all(2),
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          // Si está seleccionado, mostramos un anillo del color primario
           border: isSelected ? Border.all(color: primaryColor, width: 2) : null,
         ),
         child: CircleAvatar(
-          radius: 14, // Tamaño del avatar
+          radius: 14,
           backgroundColor: Colors.grey[800],
           backgroundImage: (avatarUrl != null && avatarUrl.isNotEmpty)
               ? NetworkImage(avatarUrl)
-              : const NetworkImage(
-                  'https://i.pravatar.cc/150?img=5',
-                ), // Placeholder
+              : const NetworkImage('https://i.pravatar.cc/150?img=5'),
         ),
       ),
     );

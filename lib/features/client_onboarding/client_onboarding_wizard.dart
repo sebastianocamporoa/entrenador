@@ -12,18 +12,17 @@ class _ClientOnboardingWizardState extends State<ClientOnboardingWizard> {
   final PageController _pageCtrl = PageController();
   final _supa = Supabase.instance.client;
 
-  // --- VARIABLES DE DATOS ---
   String? _selectedSex;
-  final TextEditingController _heightCtrl = TextEditingController(); // Nuevo
-  final TextEditingController _weightCtrl = TextEditingController(); // Nuevo
+  final TextEditingController _heightCtrl = TextEditingController();
+  final TextEditingController _weightCtrl = TextEditingController();
   final TextEditingController _phoneCtrl = TextEditingController();
+  String? _activityLevel;
   final TextEditingController _goalCtrl = TextEditingController();
 
   int _currentPage = 0;
   bool _isLoading = false;
 
-  // Ahora son 5 pasos: Sexo -> Altura -> Peso -> Teléfono -> Meta
-  final int _totalSteps = 5;
+  final int _totalSteps = 6;
 
   @override
   void dispose() {
@@ -51,7 +50,6 @@ class _ClientOnboardingWizardState extends State<ClientOnboardingWizard> {
     try {
       final userId = _supa.auth.currentUser!.id;
 
-      // 1. Buscar el ID interno en app_user
       final appUser = await _supa
           .from('app_user')
           .select('id')
@@ -60,14 +58,13 @@ class _ClientOnboardingWizardState extends State<ClientOnboardingWizard> {
 
       final internalUserId = appUser['id'];
 
-      // 2. Actualizar la tabla CLIENTS y devolver el ID del cliente
-      // Usamos .select() al final para obtener el ID de la fila que acabamos de actualizar
       final clientData = await _supa
           .from('clients')
           .update({
             'sex': _selectedSex,
             'phone': _phoneCtrl.text.trim(),
             'goal': _goalCtrl.text.trim(),
+            'activity_level': _activityLevel,
           })
           .eq('app_user_id', internalUserId)
           .select('id')
@@ -75,8 +72,6 @@ class _ClientOnboardingWizardState extends State<ClientOnboardingWizard> {
 
       final clientId = clientData['id'];
 
-      // 3. Insertar en la tabla MEASUREMENTS
-      // Parseamos los textos a números
       final double? weight = double.tryParse(
         _weightCtrl.text.replaceAll(',', '.'),
       );
@@ -86,22 +81,17 @@ class _ClientOnboardingWizardState extends State<ClientOnboardingWizard> {
 
       await _supa.from('measurements').insert({
         'client_id': clientId,
-        'date_at': DateTime.now()
-            .toIso8601String()
-            .split('T')
-            .first, // Solo fecha YYYY-MM-DD
+        'date_at': DateTime.now().toIso8601String().split('T').first,
         'weight_kg': weight,
         'height_cm': height,
-        // Los otros campos (chest, waist, etc) quedan en null por ahora
       });
 
       if (!mounted) return;
-
-      Navigator.of(context).pop(true); // Éxito
+      Navigator.of(context).pop(true);
     } catch (e) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Error guardando datos: $e')));
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -118,7 +108,6 @@ class _ClientOnboardingWizardState extends State<ClientOnboardingWizard> {
       body: SafeArea(
         child: Column(
           children: [
-            // BARRA DE PROGRESO
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               child: ClipRRect(
@@ -131,15 +120,12 @@ class _ClientOnboardingWizardState extends State<ClientOnboardingWizard> {
                 ),
               ),
             ),
-
-            // CONTENIDO
             Expanded(
               child: PageView(
                 controller: _pageCtrl,
                 physics: const NeverScrollableScrollPhysics(),
                 onPageChanged: (i) => setState(() => _currentPage = i),
                 children: [
-                  // 1. SEXO
                   _buildStep(
                     title: 'Comencemos',
                     subtitle: 'Esto nos ayuda a calcular tus métricas base.',
@@ -165,8 +151,6 @@ class _ClientOnboardingWizardState extends State<ClientOnboardingWizard> {
                       ],
                     ),
                   ),
-
-                  // 2. ALTURA (Nuevo)
                   _buildStep(
                     title: 'Datos corporales',
                     subtitle: 'Para ajustar los ejercicios a ti.',
@@ -178,8 +162,6 @@ class _ClientOnboardingWizardState extends State<ClientOnboardingWizard> {
                       onChanged: (_) => setState(() {}),
                     ),
                   ),
-
-                  // 3. PESO (Nuevo)
                   _buildStep(
                     title: 'Punto de partida',
                     subtitle: 'Veremos tu progreso desde aquí.',
@@ -191,8 +173,66 @@ class _ClientOnboardingWizardState extends State<ClientOnboardingWizard> {
                       onChanged: (_) => setState(() {}),
                     ),
                   ),
-
-                  // 4. TELÉFONO
+                  _buildStep(
+                    title: 'Tu ritmo actual',
+                    subtitle: 'Sé honesto, esto definirá tu plan inicial.',
+                    question: '¿Cuánta actividad física realizas?',
+                    isValid: _activityLevel != null,
+                    content: Expanded(
+                      child: SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(),
+                        child: Column(
+                          children: [
+                            _ActivityCard(
+                              title: 'Sedentario',
+                              desc: 'Poco o nada de ejercicio.',
+                              value: 'sedentary',
+                              groupValue: _activityLevel,
+                              onTap: (v) => setState(() => _activityLevel = v),
+                              color: primaryColor,
+                            ),
+                            const SizedBox(height: 12),
+                            _ActivityCard(
+                              title: 'Ligero (1-3 días)',
+                              desc: 'Ejercicio suave o deportes ocasionales.',
+                              value: 'light',
+                              groupValue: _activityLevel,
+                              onTap: (v) => setState(() => _activityLevel = v),
+                              color: primaryColor,
+                            ),
+                            const SizedBox(height: 12),
+                            _ActivityCard(
+                              title: 'Moderado (3-5 días)',
+                              desc: 'Ejercicio moderado o deportes semanales.',
+                              value: 'moderate',
+                              groupValue: _activityLevel,
+                              onTap: (v) => setState(() => _activityLevel = v),
+                              color: primaryColor,
+                            ),
+                            const SizedBox(height: 12),
+                            _ActivityCard(
+                              title: 'Activo (6-7 días)',
+                              desc: 'Ejercicio fuerte o deportes diarios.',
+                              value: 'active',
+                              groupValue: _activityLevel,
+                              onTap: (v) => setState(() => _activityLevel = v),
+                              color: primaryColor,
+                            ),
+                            const SizedBox(height: 12),
+                            _ActivityCard(
+                              title: 'Atleta (2x al día)',
+                              desc:
+                                  'Entrenamientos muy intensos o doble jornada.',
+                              value: 'athlete',
+                              groupValue: _activityLevel,
+                              onTap: (v) => setState(() => _activityLevel = v),
+                              color: primaryColor,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                   _buildStep(
                     title: 'Contacto',
                     subtitle: 'Para estar comunicados.',
@@ -205,8 +245,6 @@ class _ClientOnboardingWizardState extends State<ClientOnboardingWizard> {
                       onChanged: (_) => setState(() {}),
                     ),
                   ),
-
-                  // 5. META
                   _buildStep(
                     title: 'La Meta',
                     subtitle: 'Lo más importante es saber a dónde vas.',
@@ -230,8 +268,6 @@ class _ClientOnboardingWizardState extends State<ClientOnboardingWizard> {
     );
   }
 
-  // --- WIDGETS REUTILIZABLES PARA QUE EL CÓDIGO SEA LIMPIO ---
-
   Widget _buildStep({
     required String title,
     required String subtitle,
@@ -241,11 +277,10 @@ class _ClientOnboardingWizardState extends State<ClientOnboardingWizard> {
     bool isLast = false,
   }) {
     return Padding(
-      padding: const EdgeInsets.all(32.0),
+      padding: const EdgeInsets.fromLTRB(32, 16, 32, 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Spacer(flex: 1),
           Text(
             title,
             style: const TextStyle(
@@ -261,9 +296,10 @@ class _ClientOnboardingWizardState extends State<ClientOnboardingWizard> {
             style: const TextStyle(fontSize: 16, color: Colors.white54),
             textAlign: TextAlign.center,
           ),
-          const Spacer(flex: 1),
+          const SizedBox(height: 32),
           Text(
             question,
+            textAlign: TextAlign.center,
             style: const TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w600,
@@ -271,8 +307,8 @@ class _ClientOnboardingWizardState extends State<ClientOnboardingWizard> {
             ),
           ),
           const SizedBox(height: 24),
-          content,
-          const Spacer(flex: 3),
+          content is Expanded ? content : Expanded(child: content),
+          const SizedBox(height: 24),
           SizedBox(
             height: 56,
             child: FilledButton(
@@ -307,7 +343,6 @@ class _ClientOnboardingWizardState extends State<ClientOnboardingWizard> {
   }
 }
 
-// Widget para inputs numéricos grandes (Peso / Altura)
 class _NumberInput extends StatelessWidget {
   final TextEditingController controller;
   final String suffix;
@@ -352,7 +387,6 @@ class _NumberInput extends StatelessWidget {
   }
 }
 
-// Widget para inputs de texto normales
 class _TextInput extends StatelessWidget {
   final TextEditingController controller;
   final String hint;
@@ -441,6 +475,77 @@ class _GenderCard extends StatelessWidget {
             ),
             const Spacer(),
             if (isSelected) Icon(Icons.check_circle, color: color),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActivityCard extends StatelessWidget {
+  final String title;
+  final String desc;
+  final String value;
+  final String? groupValue;
+  final Function(String) onTap;
+  final Color color;
+
+  const _ActivityCard({
+    required this.title,
+    required this.desc,
+    required this.value,
+    required this.groupValue,
+    required this.onTap,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isSelected = value == groupValue;
+
+    return GestureDetector(
+      onTap: () => onTap(value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? color.withOpacity(0.2)
+              : Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? color : Colors.transparent,
+            width: 2,
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : Colors.white70,
+                      fontSize: 16,
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    desc,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white70 : Colors.white38,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isSelected) Icon(Icons.check_circle, color: color, size: 24),
           ],
         ),
       ),
