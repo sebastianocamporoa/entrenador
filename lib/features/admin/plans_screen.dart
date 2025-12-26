@@ -17,7 +17,7 @@ class _PlansScreenState extends State<PlansScreen> {
   @override
   void initState() {
     super.initState();
-    _future = _repo.listGlobalPlans(); // ✅ usamos el método correcto
+    _future = _repo.listGlobalPlans();
   }
 
   Future<void> _reload() async {
@@ -75,7 +75,7 @@ class _PlansScreenState extends State<PlansScreen> {
           goal: descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
           scope: 'global',
         );
-        await _repo.addGlobalPlan(plan); // ✅ método actualizado
+        await _repo.addGlobalPlan(plan);
         if (mounted) {
           ScaffoldMessenger.of(
             context,
@@ -113,7 +113,7 @@ class _PlansScreenState extends State<PlansScreen> {
     );
 
     if (confirm == true) {
-      await _repo.remove(id); // ✅ coincide con el repositorio actual
+      await _repo.remove(id);
       if (mounted) {
         ScaffoldMessenger.of(
           context,

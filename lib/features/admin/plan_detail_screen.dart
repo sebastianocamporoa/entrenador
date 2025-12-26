@@ -145,7 +145,7 @@ class _PlanDetailScreenState extends State<PlanDetailScreen> {
     // Si guardaste "12", y son 3 series -> ["12", "12", "12"]
     // Si guardaste "12/10/8" -> ["12", "10", "8"]
 
-    List<String> initialReps = exercise.repetitions.split('/');
+    List<String> initialReps = exercise.repetitions.split('-');
     if (initialReps.length == 1 && exercise.sets > 1) {
       initialReps = List.filled(exercise.sets, initialReps[0]);
     }
@@ -359,7 +359,7 @@ class _PlanDetailScreenState extends State<PlanDetailScreen> {
                         .map((c) => c.text.trim())
                         .toList();
                     final allEqual = vals.every((v) => v == vals[0]);
-                    final repsStr = allEqual ? vals[0] : vals.join('/');
+                    final repsStr = allEqual ? vals[0] : vals.join('-');
 
                     onSave(
                       int.tryParse(setsCtrl.text) ?? 0,
