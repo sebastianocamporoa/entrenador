@@ -4,6 +4,10 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 
+// 🔥 NUEVO: Importamos Firebase Core y tu servicio de notificaciones
+import 'package:firebase_core/firebase_core.dart';
+import 'common/services/notification_service.dart';
+
 // --- SERVICIOS ---
 import 'common/services/user_service.dart';
 
@@ -32,6 +36,14 @@ Future<void> main() async {
   );
 
   await Supabase.initialize(url: supaUrl, anonKey: supaAnon);
+
+  // 🔥 NUEVO: Inicializamos Firebase antes de correr la app
+  try {
+    await Firebase.initializeApp();
+    debugPrint('🔥 Firebase inicializado correctamente');
+  } catch (e) {
+    debugPrint('⚠️ Error inicializando Firebase: $e');
+  }
 
   // 2. Quitamos el Splash nativo cuando todo esté listo
   FlutterNativeSplash.remove();
@@ -141,6 +153,11 @@ class _AuthGateState extends State<AuthGate> {
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((state) {
       if (mounted) setState(() {});
     });
+
+    // 🔥 NUEVO: Iniciamos el servicio de notificaciones AQUÍ.
+    // Lo hacemos en el AuthGate porque aquí ya sabemos que el usuario
+    // está logueado, por lo que podemos guardar su token en la BD.
+    NotificationService().init();
   }
 
   @override
@@ -332,7 +349,6 @@ class _LoginPageState extends State<LoginPage> {
         : 'Comienza tu viaje';
     final action = isLogin ? 'Entrar' : 'Registrarme';
 
-    // 1. Detectar si el teclado está abierto
     final isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
     final size = MediaQuery.of(context).size;
 
@@ -345,11 +361,9 @@ class _LoginPageState extends State<LoginPage> {
               children: [
                 ClipPath(
                   clipper: _DiagonalClipper(),
-                  // 2. Usar AnimatedContainer para suavizar el cambio de altura
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 300),
                     curve: Curves.easeInOut,
-                    // Si el teclado está abierto, reducimos la altura al 25%, si no, 52%
                     height: isKeyboardOpen
                         ? size.height * 0.25
                         : size.height * 0.52,
@@ -376,18 +390,15 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ),
                 ),
-                // 3. Ocultar el texto grande cuando el teclado está abierto
-                // para que no estorbe visualmente en el espacio reducido
+                // 🔥 Mantengo tu corrección visual anterior:
                 AnimatedPositioned(
                   duration: const Duration(milliseconds: 300),
                   left: 24,
-                  // Movemos el texto un poco más abajo si el teclado está abierto, o lo ocultamos
+                  right: 24, // <-- ESTO EVITA QUE EL TEXTO SE SALGA
                   bottom: isKeyboardOpen ? 20 : 100,
                   child: AnimatedOpacity(
                     duration: const Duration(milliseconds: 200),
-                    opacity: isKeyboardOpen
-                        ? 0.0
-                        : 1.0, // Desaparece al escribir
+                    opacity: isKeyboardOpen ? 0.0 : 1.0,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -505,6 +516,8 @@ class _LoginPageState extends State<LoginPage> {
   }
 }
 
+// ... (El resto de clases OnboardingPage y demás se mantienen igual) ...
+// Inclúyelas tal cual las tenías abajo del código.
 class OnboardingPage extends StatefulWidget {
   const OnboardingPage({super.key});
 
@@ -540,8 +553,6 @@ class _OnboardingPageState extends State<OnboardingPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Esto precarga todas las imágenes en la memoria caché del dispositivo
-    // para que al deslizar ya estén listas y no haya retraso.
     for (final page in _pages) {
       precacheImage(AssetImage(page.image), context);
     }
@@ -574,13 +585,11 @@ class _OnboardingPageState extends State<OnboardingPage> {
             controller: _controller,
             onPageChanged: (i) => setState(() => _page = i),
             itemCount: _pages.length,
-            // AQUÍ PASAMOS LA FUNCIÓN _next
             itemBuilder: (_, i) =>
                 _OnboardSlide(data: _pages[i], onNext: _next),
           ),
-          // Indicadores (Puntos)
           Positioned(
-            bottom: 40, // Los bajé un poco más (antes 70)
+            bottom: 40,
             child: Row(
               children: List.generate(
                 _pages.length,
@@ -597,7 +606,6 @@ class _OnboardingPageState extends State<OnboardingPage> {
               ),
             ),
           ),
-          // ¡YA NO EXISTE EL POSITIONED DEL BOTÓN AQUÍ!
         ],
       ),
     );
@@ -639,7 +647,6 @@ class _OnboardSlide extends StatelessWidget {
             child: Stack(
               children: [
                 SizedBox(
-                  // 2. REDUCIMOS AL 50% (antes 0.6) para dar espacio al texto
                   height: size.height * 0.6,
                   width: double.infinity,
                   child: Image.asset(data.image, fit: BoxFit.cover),
@@ -676,7 +683,6 @@ class _OnboardSlide extends StatelessWidget {
                       style: TextStyle(
                         color: textColor,
                         fontSize: 29,
-                        // CAMBIO 1: Título en Negrita fuerte
                         fontWeight: FontWeight.bold,
                         height: 1.1,
                       ),
@@ -688,12 +694,10 @@ class _OnboardSlide extends StatelessWidget {
                       style: TextStyle(
                         color: textColor,
                         fontSize: 19,
-                        // CAMBIO 2: Subtítulo un poco más grueso (SemiBold)
                         fontWeight: FontWeight.w600,
                         height: 1.3,
                       ),
                     ),
-
                     if (data.showButton) ...[
                       const SizedBox(height: 40),
                       ElevatedButton(

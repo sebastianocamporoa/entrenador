@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1042588907500",
+    "project_id": "entrenador-app-863a6",
+    "storage_bucket": "entrenador-app-863a6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1042588907500:android:f74d84e5394d0b6ac032c9",
+        "android_client_info": {
+          "package_name": "com.example.entrenador"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA9U2VYIuwlZNS7i6QQ255mAhbbHbiYrf0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

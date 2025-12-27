@@ -1,3 +1,16 @@
+// --- AGREGAR ESTO AL PRINCIPIO ---
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // Esta línea descarga las herramientas de Google para Firebase
+        classpath("com.google.gms:google-services:4.4.1")
+    }
+}
+// ----------------------------------
+
 allprojects {
     repositories {
         google()
@@ -5,7 +18,7 @@ allprojects {
     }
 }
 
-val newBuildDir: Directory =
+val newBuildDir: Directory = 
     rootProject.layout.buildDirectory
         .dir("../../build")
         .get()

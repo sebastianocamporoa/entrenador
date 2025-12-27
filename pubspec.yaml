@@ -10,6 +10,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # --- FIREBASE ---
+  firebase_core: ^3.1.0      
+  firebase_messaging: ^15.0.1
 
   cupertino_icons: ^1.0.8
   supabase_flutter: ^2.5.2
