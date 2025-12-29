@@ -1,8 +1,16 @@
+import 'dart:io'; // Necesario para manejar archivos
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:path_provider/path_provider.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:intl/intl.dart';
 
-// --- IMPORTANTE: AJUSTA ESTA RUTA A DONDE TENGAS TU SERVICIO ---
+// --- IMPORTANTE: AJUSTA ESTAS RUTAS SEGÚN TU PROYECTO ---
 import '../../common/services/diet_service.dart';
+import '../../common/data/models/training_session.dart';
+import '../../common/data/repositories/training_sessions_repo.dart';
 
 class ClientDetailPage extends StatelessWidget {
   final Map<String, dynamic> client;
@@ -17,7 +25,7 @@ class ClientDetailPage extends StatelessWidget {
     const textColor = Color(0xFFD9D9D9);
 
     return DefaultTabController(
-      length: 4,
+      length: 5, // <--- AHORA SON 5 PESTAÑAS
       child: Scaffold(
         backgroundColor: background,
         appBar: AppBar(
@@ -40,7 +48,8 @@ class ClientDetailPage extends StatelessWidget {
             labelStyle: TextStyle(fontWeight: FontWeight.bold),
             tabs: [
               Tab(text: 'Datos'),
-              Tab(text: 'Agenda Semanal'),
+              Tab(text: 'Agenda'),
+              Tab(text: 'Asistencia'), // <--- NUEVA PESTAÑA
               Tab(text: 'Progreso'),
               Tab(text: 'Nutrición'),
             ],
@@ -50,9 +59,11 @@ class ClientDetailPage extends StatelessWidget {
           children: [
             _DatosTab(c: c),
             _AgendaTab(clientId: c['id'], clientName: c['name'] ?? 'Cliente'),
-            _ProgresoTab(
+            _AsistenciaTab(
               clientId: c['id'],
-            ), // <--- Aquí está la magia de las fotos
+              clientName: c['name'] ?? 'Cliente',
+            ), // <--- NUEVA PANTALLA
+            _ProgresoTab(clientId: c['id']),
             _DietTab(clientId: c['id']),
           ],
         ),
@@ -352,7 +363,343 @@ class _AgendaTabState extends State<_AgendaTab> {
 }
 
 // ==========================================
-// 3. TAB DE PROGRESO (CON VISOR DE FOTOS)
+// 3. TAB DE ASISTENCIA (GENERACIÓN PDF)
+// ==========================================
+class _AsistenciaTab extends StatefulWidget {
+  final String clientId;
+  final String clientName;
+
+  const _AsistenciaTab({required this.clientId, required this.clientName});
+
+  @override
+  State<_AsistenciaTab> createState() => _AsistenciaTabState();
+}
+
+class _AsistenciaTabState extends State<_AsistenciaTab> {
+  final _repo = TrainingSessionsRepo();
+  bool _isLoading = true;
+  List<TrainingSession> _sessions = [];
+
+  // Estadísticas
+  int _attended = 0;
+  int _missed = 0;
+  double _percentage = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHistory();
+  }
+
+  Future<void> _loadHistory() async {
+    try {
+      final data = await _repo.getClientHistory(widget.clientId);
+
+      final now = DateTime.now();
+      int attendedCount = 0;
+      int missedCount = 0;
+
+      // Calcular solo sesiones que ya pasaron
+      for (var s in data) {
+        // Asistió si tiene started = true
+        if (s.started) {
+          attendedCount++;
+        }
+        // Faltó si NO tiene started, y la hora de fin ya pasó
+        else if (s.endTime.isBefore(now.toUtc())) {
+          missedCount++;
+        }
+        // Si es a futuro, no cuenta ni como falta ni como asistencia
+      }
+
+      final totalEvaluated = attendedCount + missedCount;
+
+      if (mounted) {
+        setState(() {
+          _sessions = data;
+          _attended = attendedCount;
+          _missed = missedCount;
+          _percentage = totalEvaluated > 0
+              ? (attendedCount / totalEvaluated) * 100
+              : 0.0;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+      debugPrint('Error cargando historial: $e');
+    }
+  }
+
+  /// 🖨️ Generar PDF y Abrir con OpenFilex
+  Future<void> _generateAndOpenPdf() async {
+    final pdf = pw.Document();
+    final now = DateTime.now();
+
+    // Filtramos para el reporte: Sesiones pasadas o iniciadas
+    final reportSessions = _sessions.where((s) {
+      return s.started || s.endTime.isBefore(now.toUtc());
+    }).toList();
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        build: (pw.Context context) {
+          return [
+            // Encabezado
+            pw.Header(
+              level: 0,
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text(
+                    'Reporte de Asistencia',
+                    style: pw.TextStyle(
+                      fontSize: 24,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                  pw.Text('Fecha: ${DateFormat('dd/MM/yyyy').format(now)}'),
+                ],
+              ),
+            ),
+
+            pw.SizedBox(height: 20),
+
+            // Resumen
+            pw.Container(
+              padding: const pw.EdgeInsets.all(10),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.grey),
+                borderRadius: pw.BorderRadius.circular(8),
+              ),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
+                children: [
+                  _pdfStat('Cliente', widget.clientName),
+                  _pdfStat('Efectividad', '${_percentage.toStringAsFixed(1)}%'),
+                  _pdfStat('Asistencias', '$_attended', color: PdfColors.green),
+                  _pdfStat('Faltas', '$_missed', color: PdfColors.red),
+                ],
+              ),
+            ),
+
+            pw.SizedBox(height: 20),
+
+            // Tabla de datos
+            pw.Table.fromTextArray(
+              context: context,
+              headerDecoration: const pw.BoxDecoration(
+                color: PdfColors.grey300,
+              ),
+              headers: ['Fecha', 'Hora', 'Nota', 'Estado'],
+              data: reportSessions.map((s) {
+                final localDate = s.startTime.toLocal();
+                final dateStr = DateFormat('dd/MM/yyyy').format(localDate);
+                final timeStr = DateFormat('HH:mm').format(localDate);
+
+                String status = 'Ausente';
+                if (s.started) status = 'Asistió';
+
+                return [dateStr, timeStr, s.notes ?? '-', status];
+              }).toList(),
+            ),
+          ];
+        },
+      ),
+    );
+
+    try {
+      // 1. Obtener directorio temporal
+      final output = await getTemporaryDirectory();
+      // 2. Crear archivo
+      final file = File("${output.path}/asistencia_${widget.clientId}.pdf");
+      // 3. Escribir bytes
+      await file.writeAsBytes(await pdf.save());
+      // 4. Abrir archivo
+      await OpenFilex.open(file.path);
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error al generar PDF: $e')));
+      }
+    }
+  }
+
+  pw.Widget _pdfStat(String label, String value, {PdfColor? color}) {
+    return pw.Column(
+      children: [
+        pw.Text(
+          label,
+          style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey),
+        ),
+        pw.Text(
+          value,
+          style: pw.TextStyle(
+            fontSize: 14,
+            fontWeight: pw.FontWeight.bold,
+            color: color ?? PdfColors.black,
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xFFBF5AF2)),
+      );
+    }
+
+    return Column(
+      children: [
+        // Tarjeta de Resumen Visual en la App
+        Container(
+          margin: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF2C2C2E),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: Column(
+            children: [
+              const Text(
+                'Efectividad de Asistencia',
+                style: TextStyle(color: Colors.white, fontSize: 16),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '${_percentage.toStringAsFixed(1)}%',
+                style: const TextStyle(
+                  color: Color(0xFFBF5AF2),
+                  fontSize: 40,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _screenStat('$_attended', 'Asistencias', Colors.greenAccent),
+                  Container(width: 1, height: 30, color: Colors.white12),
+                  _screenStat('$_missed', 'Faltas', Colors.redAccent),
+                ],
+              ),
+            ],
+          ),
+        ),
+
+        const Divider(color: Colors.white10),
+
+        // Lista Historial
+        Expanded(
+          child: _sessions.isEmpty
+              ? const Center(
+                  child: Text(
+                    'No hay historial',
+                    style: TextStyle(color: Colors.white54),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _sessions.length,
+                  itemBuilder: (ctx, i) {
+                    final s = _sessions[i];
+                    final localDate = s.startTime.toLocal();
+                    final now = DateTime.now();
+
+                    // Lógica visual
+                    bool isPast = s.endTime.isBefore(now.toUtc());
+                    Color statusColor = Colors.grey;
+                    String statusText = "Pendiente";
+                    IconData icon = Icons.access_time;
+
+                    if (s.started) {
+                      statusColor = Colors.green;
+                      statusText = "Asistió";
+                      icon = Icons.check_circle;
+                    } else if (isPast) {
+                      statusColor = Colors.redAccent;
+                      statusText = "Ausente";
+                      icon = Icons.cancel;
+                    }
+
+                    return Card(
+                      color: Colors.white10,
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: Icon(icon, color: statusColor),
+                        title: Text(
+                          DateFormat('EEE d MMM', 'es_ES').format(localDate),
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        subtitle: Text(
+                          DateFormat('HH:mm').format(localDate),
+                          style: const TextStyle(color: Colors.white54),
+                        ),
+                        trailing: Text(
+                          statusText,
+                          style: TextStyle(
+                            color: statusColor,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+
+        // Botón PDF
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFBF5AF2),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: _generateAndOpenPdf,
+              icon: const Icon(Icons.picture_as_pdf),
+              label: const Text('DESCARGAR REPORTE PDF'),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _screenStat(String value, String label, Color color) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            color: color,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        Text(
+          label,
+          style: const TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+      ],
+    );
+  }
+}
+
+// ==========================================
+// 4. TAB DE PROGRESO (CON VISOR DE FOTOS)
 // ==========================================
 class _ProgresoTab extends StatefulWidget {
   final String clientId;
@@ -590,7 +937,7 @@ class _ProgresoTabState extends State<_ProgresoTab> {
 }
 
 // ==========================================
-// 4. TAB DE NUTRICIÓN
+// 5. TAB DE NUTRICIÓN
 // ==========================================
 class _DietTab extends StatefulWidget {
   final String clientId;

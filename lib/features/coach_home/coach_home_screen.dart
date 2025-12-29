@@ -214,7 +214,6 @@ class _CoachHomeScreenState extends State<CoachHomeScreen> {
                     startHour: 0,
                     endHour: 24,
                   ),
-
                   onTap: (details) async {
                     final tappedDate = details.date;
 

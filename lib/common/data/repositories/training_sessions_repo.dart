@@ -122,4 +122,19 @@ class TrainingSessionsRepo {
 
     return TrainingSession.fromJson(res);
   }
+
+  /// 🔹 Obtiene el historial completo de un cliente específico
+  Future<List<TrainingSession>> getClientHistory(String clientId) async {
+    final res = await _supa
+        .from(
+          'training_session',
+        ) // Asegúrate que el nombre de tabla sea correcto
+        .select(
+          'id, trainer_id, client_id, start_time, end_time, notes, started',
+        )
+        .eq('client_id', clientId)
+        .order('start_time', ascending: false); // Ordenar: más reciente primero
+
+    return (res as List).map((e) => TrainingSession.fromJson(e)).toList();
+  }
 }
