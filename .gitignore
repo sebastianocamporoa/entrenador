@@ -45,3 +45,4 @@ app.*.map.json
 /android/app/release
 
 supabase/functions/send-diet-notification/credentials.ts
+supabase/functions/send-schedule-notification/credentials.ts
