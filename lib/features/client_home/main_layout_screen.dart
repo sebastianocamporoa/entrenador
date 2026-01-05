@@ -206,7 +206,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
           backgroundColor: Colors.grey[800],
           backgroundImage: (avatarUrl != null && avatarUrl.isNotEmpty)
               ? NetworkImage(avatarUrl)
-              : const NetworkImage('https://i.pravatar.cc/150?img=5'),
+              : null,
         ),
       ),
     );

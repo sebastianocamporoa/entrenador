@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:image_picker/image_picker.dart'; // 🔥 1. IMPORTANTE: Paquete para galería
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -11,6 +12,75 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final _supa = Supabase.instance.client;
   bool _isLoading = false;
+  String? _localAvatarUrl; // 🔥 2. Para mostrar la foto apenas se sube
+
+  // --- 🔥 3. LÓGICA PARA SUBIR FOTO ---
+  Future<void> _uploadPhoto() async {
+    final picker = ImagePicker();
+    // Abrir galería
+    final XFile? image = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 70, // Comprimir un poco
+      maxWidth: 500,
+    );
+
+    if (image == null) return; // Usuario canceló
+
+    setState(() => _isLoading = true);
+
+    try {
+      final user = _supa.auth.currentUser;
+      if (user == null) return;
+
+      final imageBytes = await image.readAsBytes();
+      final fileExt = image.path.split('.').last;
+
+      // Nombre del archivo: id_usuario/avatar_timestamp.jpg
+      final fileName =
+          '${user.id}/avatar.${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+
+      // A. Subir a Supabase Storage (Bucket 'avatars')
+      await _supa.storage
+          .from('avatars')
+          .uploadBinary(
+            fileName,
+            imageBytes,
+            fileOptions: const FileOptions(upsert: true),
+          );
+
+      // B. Obtener URL pública
+      final imageUrl = _supa.storage.from('avatars').getPublicUrl(fileName);
+
+      // C. Actualizar perfil de Auth
+      await _supa.auth.updateUser(
+        UserAttributes(data: {'avatar_url': imageUrl}),
+      );
+
+      // D. Actualizar vista local inmediatamente
+      if (mounted) {
+        setState(() {
+          _localAvatarUrl = imageUrl;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Foto actualizada correctamente ✅'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al subir foto: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   // --- CERRAR SESIÓN ---
   Future<void> _signOut() async {
@@ -42,18 +112,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void _showTermsModal() {
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true, // Permite que ocupe casi toda la pantalla
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.85, // 85% de altura
+        height: MediaQuery.of(context).size.height * 0.85,
         decoration: const BoxDecoration(
-          color: Color(0xFF1C1C1E), // Mismo fondo de la app
+          color: Color(0xFF1C1C1E),
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
         padding: const EdgeInsets.fromLTRB(24, 10, 24, 0),
         child: Column(
           children: [
-            // Indicador de arrastre
             Container(
               width: 40,
               height: 4,
@@ -63,7 +132,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            // Título del Modal
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -82,7 +150,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
             const Divider(color: Colors.white10),
-            // Contenido Scrollable
             Expanded(
               child: SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
@@ -162,7 +229,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final user = _supa.auth.currentUser;
     final email = user?.email ?? 'Usuario';
     final name = user?.userMetadata?['full_name'] ?? 'Atleta';
-    final avatarUrl = user?.userMetadata?['avatar_url'];
+
+    // 🔥 4. Usamos la URL local si existe, si no la de la nube
+    final avatarUrl = _localAvatarUrl ?? user?.userMetadata?['avatar_url'];
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -173,22 +242,55 @@ class _ProfileScreenState extends State<ProfileScreen> {
             children: [
               const SizedBox(height: 20),
 
-              // 1. FOTO DE PERFIL
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Theme.of(context).primaryColor,
-                    width: 2,
-                  ),
-                ),
-                child: CircleAvatar(
-                  radius: 50,
-                  backgroundColor: Colors.grey[800],
-                  backgroundImage: (avatarUrl != null)
-                      ? NetworkImage(avatarUrl)
-                      : const NetworkImage('https://i.pravatar.cc/300?img=5'),
+              // 🔥 5. FOTO DE PERFIL MODIFICADA (Interactiva)
+              Center(
+                child: Stack(
+                  children: [
+                    GestureDetector(
+                      onTap: _isLoading
+                          ? null
+                          : _uploadPhoto, // Clic para subir
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Theme.of(context).primaryColor,
+                            width: 2,
+                          ),
+                        ),
+                        child: CircleAvatar(
+                          radius: 50,
+                          backgroundColor: Colors.grey[800],
+                          backgroundImage: (avatarUrl != null)
+                              ? NetworkImage(avatarUrl)
+                              : null,
+                        ),
+                      ),
+                    ),
+                    // Icono de edición (Lápiz)
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.edit,
+                          size: 16,
+                          color: Colors.black,
+                        ),
+                      ),
+                    ),
+                    // Spinner de carga
+                    if (_isLoading)
+                      const Positioned.fill(
+                        child: Center(child: CircularProgressIndicator()),
+                      ),
+                  ],
                 ),
               ),
               const SizedBox(height: 16),
@@ -235,11 +337,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 title: 'Ayuda y Soporte',
                 onTap: () {},
               ),
-              // --- AQUÍ CONECTAMOS LA LÓGICA DE TÉRMINOS ---
+              // --- TÉRMINOS ---
               _buildListTile(
                 icon: Icons.info_outline,
                 title: 'Términos y Condiciones',
-                onTap: _showTermsModal, // <--- Conectado aquí
+                onTap: _showTermsModal,
               ),
 
               const SizedBox(height: 30),
