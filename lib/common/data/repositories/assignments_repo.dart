@@ -108,4 +108,60 @@ class AssignmentsRepo {
     // null -> No hay nada programado hoy.
     // Map -> { 'start_time': '...', 'started': false/true }
   }
+
+  // 1. Guardar el peso
+  Future<void> logExerciseWeight(String exerciseName, double weight) async {
+    final user = _supa.auth.currentUser;
+    if (user == null) return;
+
+    // Obtener ID del cliente (Lógica rápida)
+    final appUser = await _supa
+        .from('app_user')
+        .select('id')
+        .eq('auth_user_id', user.id)
+        .single();
+    final client = await _supa
+        .from('clients')
+        .select('id')
+        .eq('app_user_id', appUser['id'])
+        .single();
+
+    await _supa.from('exercise_logs').insert({
+      'client_id': client['id'],
+      'exercise_name': exerciseName,
+      'weight': weight,
+    });
+  }
+
+  // 2. Obtener historial para la gráfica
+  Future<List<Map<String, dynamic>>> getExerciseHistory(
+    String exerciseName,
+  ) async {
+    final user = _supa.auth.currentUser;
+    if (user == null) return [];
+
+    final appUser = await _supa
+        .from('app_user')
+        .select('id')
+        .eq('auth_user_id', user.id)
+        .single();
+    final client = await _supa
+        .from('clients')
+        .select('id')
+        .eq('app_user_id', appUser['id'])
+        .single();
+
+    final response = await _supa
+        .from('exercise_logs')
+        .select('weight, created_at')
+        .eq('client_id', client['id'])
+        .eq('exercise_name', exerciseName)
+        .order(
+          'created_at',
+          ascending: true,
+        ) // Importante para la línea de tiempo
+        .limit(20); // Últimos 20 registros
+
+    return List<Map<String, dynamic>>.from(response);
+  }
 }
