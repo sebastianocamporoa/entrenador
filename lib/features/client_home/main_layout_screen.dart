@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'today_workout_screen.dart';
+// 🔥 CAMBIO 1: Importamos la nueva pantalla con calendario
+import 'client_home_screen.dart';
+
+// Ya no necesitamos importar TodayWorkoutScreen aquí, porque ClientHomeScreen la llamará por dentro
+// import 'today_workout_screen.dart';
+
 import '../statistics/statistics_screen.dart';
 import '../profile/profile_screen.dart';
 import '../client_onboarding/client_onboarding_wizard.dart';
@@ -18,7 +23,9 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
   final SupabaseClient _supabase = Supabase.instance.client;
 
   late final List<Widget> _pages = [
-    const TodayWorkoutScreen(),
+    // 🔥 CAMBIO 2: Aquí ponemos la pantalla nueva
+    const ClientHomeScreen(),
+
     const StatisticsScreen(),
     const Center(
       child: Text(
@@ -90,6 +97,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
 
     return Scaffold(
       backgroundColor: backgroundColor,
+      // Aquí se carga la página correspondiente según el índice
       body: _pages[_currentIndex],
       bottomNavigationBar: Container(
         height: 80,
