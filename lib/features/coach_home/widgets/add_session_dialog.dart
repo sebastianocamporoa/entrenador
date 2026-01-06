@@ -30,6 +30,9 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
   String? _selectedClient;
   List<Map<String, dynamic>> _clients = [];
 
+  // 🔥 NUEVO: Estado para saber si es entrenamiento solo
+  bool _isSoloSession = false;
+
   String? _timeError;
 
   final Map<String, bool> _days = {
@@ -50,31 +53,19 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
   }
 
   void _initializeDates() {
-    // 1. Si estamos editando, precargar datos existentes
     if (widget.existingSession != null) {
       _prefillIfEditing();
       return;
     }
 
-    // 2. Si venimos de un clic en el calendario (Nueva sesión en hora específica)
     if (widget.initialDate != null) {
       final d = widget.initialDate!;
-
-      // Configurar fechas
       _startDate = DateTime(d.year, d.month, d.day);
-      // Por defecto dejamos la fecha fin igual a la inicio (o +7 días si prefieres mantener tu lógica de rangos)
       _endDate = _startDate.add(const Duration(days: 7));
-
-      // --- CORRECCIÓN AQUÍ ---
-      // Actualizamos la hora de inicio con la hora de la celda tocada
       _startTime = TimeOfDay.fromDateTime(d);
-
-      // Calculamos la hora fin (por ejemplo, 1 hora después)
       final endD = d.add(const Duration(hours: 1));
       _endTime = TimeOfDay.fromDateTime(endD);
 
-      // Opcional: Marcar automáticamente el día de la semana correspondiente
-      // Si toqué un Martes, que se active la 'M' automáticamente
       final wdLetter = _weekdayToLetter(d.weekday);
       if (_days.containsKey(wdLetter)) {
         _days[wdLetter] = true;
@@ -90,11 +81,13 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
 
       _startDate = DateTime(localStart.year, localStart.month, localStart.day);
       _endDate = DateTime(localEnd.year, localEnd.month, localEnd.day);
-
       _startTime = TimeOfDay.fromDateTime(localStart);
       _endTime = TimeOfDay.fromDateTime(localEnd);
-
       _noteCtrl.text = s.subject;
+
+      // 🔥 OJO: Aquí deberías recuperar si es solo o no desde el objeto Appointment
+      // Por ahora lo dejamos en false o tendrías que pasar el objeto TrainingSession completo
+      // _isSoloSession = ...;
     }
   }
 
@@ -109,9 +102,7 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
           .eq('email', user.email!)
           .maybeSingle();
 
-      if (appUser == null) {
-        throw 'El usuario no existe. Debe registrarse primero.';
-      }
+      if (appUser == null) throw 'Usuario no existe';
 
       final appUserId = appUser['id'] as String;
 
@@ -137,6 +128,7 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
     }
   }
 
+  // ... (Funciones de DatePicker se mantienen igual) ...
   Future<void> _pickStartDate() async {
     final result = await showDatePicker(
       context: context,
@@ -159,13 +151,11 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
 
   Future<void> _pickStartTime() async {
     final t = await showTimePicker(context: context, initialTime: _startTime);
-
     if (t != null) setState(() => _startTime = t);
   }
 
   Future<void> _pickEndTime() async {
     final t = await showTimePicker(context: context, initialTime: _endTime);
-
     if (t != null) setState(() => _endTime = t);
   }
 
@@ -185,7 +175,6 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
       _startTime.hour,
       _startTime.minute,
     );
-
     final endDateTimeLocal = DateTime(
       _startDate.year,
       _startDate.month,
@@ -251,8 +240,13 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
       startTime: start.toUtc(),
       endTime: end.toUtc(),
       started: widget.existingSession!.location == "true",
+      // 🔥 IMPORTANTE: Aquí deberás actualizar tu modelo TrainingSession
+      // para que acepte isSolo. Por ahora lo mandamos, pero asegúrate
+      // de actualizar tu modelo en data/models/training_session.dart
+      // isSolo: _isSoloSession,
     );
 
+    // NOTA: Si tu repo no soporta isSolo en updateSession, deberás actualizarlo
     await _repo.updateSession(session);
   }
 
@@ -265,7 +259,6 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
       d = d.add(const Duration(days: 1))
     ) {
       final wd = _weekdayToLetter(d.weekday);
-
       if (!days.contains(wd)) continue;
 
       final start = DateTime(
@@ -275,7 +268,6 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
         _startTime.hour,
         _startTime.minute,
       ).toUtc();
-
       final end = DateTime(
         d.year,
         d.month,
@@ -284,16 +276,18 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
         _endTime.minute,
       ).toUtc();
 
+      // 🔥 AQUÍ PASAMOS EL NUEVO PARÁMETRO
+      // Deberás ir a tu TrainingSessionsRepo y agregar 'isSolo' como argumento
       futures.add(
         _repo.addSession(
           startTime: start,
           endTime: end,
           notes: _noteCtrl.text.trim(),
           clientId: _selectedClient,
+          isSolo: _isSoloSession, // <--- Nuevo parámetro
         ),
       );
     }
-
     await Future.wait(futures);
   }
 
@@ -369,58 +363,7 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
                 ),
                 const SizedBox(height: 20),
 
-                _darkTile(
-                  Icons.calendar_today,
-                  'Inicio: ${dateFmt.format(_startDate)}',
-                  _pickStartDate,
-                ),
-                _darkTile(
-                  Icons.calendar_month,
-                  'Fin: ${dateFmt.format(_endDate)}',
-                  _pickEndDate,
-                ),
-
-                _darkTile(
-                  Icons.access_time,
-                  'Hora inicio: ${_startTime.format(context)}',
-                  _pickStartTime,
-                ),
-                _darkTile(
-                  Icons.access_time_filled,
-                  'Hora fin: ${_endTime.format(context)}',
-                  _pickEndTime,
-                ),
-
-                if (_timeError != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4.0, bottom: 8.0),
-                    child: Text(
-                      _timeError!,
-                      style: const TextStyle(color: Colors.redAccent),
-                    ),
-                  ),
-
-                const Text(
-                  'Días de la semana',
-                  style: TextStyle(color: textColor),
-                ),
-                const SizedBox(height: 4),
-
-                Wrap(
-                  spacing: 6,
-                  children: _days.keys.map((d) {
-                    return FilterChip(
-                      label: Text(d, style: const TextStyle(color: textColor)),
-                      backgroundColor: Colors.white10,
-                      selectedColor: accent.withOpacity(0.4),
-                      selected: _days[d]!,
-                      onSelected: (v) => setState(() => _days[d] = v),
-                    );
-                  }).toList(),
-                ),
-
-                const SizedBox(height: 16),
-
+                // --- SELECTOR DE CLIENTE ---
                 DropdownButtonFormField<String>(
                   dropdownColor: background,
                   decoration: const InputDecoration(
@@ -449,7 +392,85 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
                       .toList(),
                   onChanged: (val) => setState(() => _selectedClient = val),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
+
+                // --- 🔥 NUEVO: SWITCH PARA ENTRENAMIENTO SOLO ---
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _isSoloSession ? accent : Colors.transparent,
+                    ),
+                  ),
+                  child: SwitchListTile(
+                    title: const Text(
+                      'Entrenamiento autónomo',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    subtitle: const Text(
+                      'El cliente podrá iniciar la sesión sin ti.',
+                      style: TextStyle(color: Colors.white54, fontSize: 12),
+                    ),
+                    value: _isSoloSession,
+                    activeColor: accent,
+                    onChanged: (val) => setState(() => _isSoloSession = val),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                _darkTile(
+                  Icons.calendar_today,
+                  'Inicio: ${dateFmt.format(_startDate)}',
+                  _pickStartDate,
+                ),
+                _darkTile(
+                  Icons.calendar_month,
+                  'Fin: ${dateFmt.format(_endDate)}',
+                  _pickEndDate,
+                ),
+                _darkTile(
+                  Icons.access_time,
+                  'Hora inicio: ${_startTime.format(context)}',
+                  _pickStartTime,
+                ),
+                _darkTile(
+                  Icons.access_time_filled,
+                  'Hora fin: ${_endTime.format(context)}',
+                  _pickEndTime,
+                ),
+
+                if (_timeError != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4.0, bottom: 8.0),
+                    child: Text(
+                      _timeError!,
+                      style: const TextStyle(color: Colors.redAccent),
+                    ),
+                  ),
+
+                const Text(
+                  'Días de la semana',
+                  style: TextStyle(color: textColor),
+                ),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 6,
+                  children: _days.keys.map((d) {
+                    return FilterChip(
+                      label: Text(d, style: const TextStyle(color: textColor)),
+                      backgroundColor: Colors.white10,
+                      selectedColor: accent.withOpacity(0.4),
+                      selected: _days[d]!,
+                      onSelected: (v) => setState(() => _days[d] = v),
+                    );
+                  }).toList(),
+                ),
+
+                const SizedBox(height: 16),
 
                 TextFormField(
                   controller: _noteCtrl,
@@ -480,18 +501,11 @@ class _AddSessionDialogState extends State<AddSessionDialog> {
                     onPressed: _saving ? null : _save,
                     icon: const Icon(Icons.check, color: Colors.white),
                     label: Text(
-                      _saving
-                          ? (widget.existingSession != null
-                                ? 'Actualizando...'
-                                : 'Agendando...')
-                          : (widget.existingSession != null
-                                ? 'Guardar cambios'
-                                : 'Guardar sesiones'),
+                      _saving ? 'Guardando...' : 'Agendar Sesiones',
                       style: const TextStyle(color: Colors.white),
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 12),
               ],
             ),

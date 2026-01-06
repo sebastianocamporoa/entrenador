@@ -33,6 +33,7 @@ class TrainingSessionsRepo {
     required DateTime endTime,
     String? notes,
     required String? clientId,
+    bool isSolo = false,
   }) async {
     final user = _supa.auth.currentUser;
     if (user == null) throw Exception('Usuario no autenticado');
@@ -44,7 +45,8 @@ class TrainingSessionsRepo {
       'start_time': startTime.toIso8601String(),
       'end_time': endTime.toIso8601String(),
       'notes': notes,
-      'started': false,
+      'started': isSolo,
+      'is_solo': isSolo,
     });
   }
 
