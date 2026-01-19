@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:io'; // 1. Necesario para Platform
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 
-// 🔥 NUEVO: Importamos Firebase Core y tu servicio de notificaciones
+// 2. RevenueCat y Firebase
+import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'common/services/notification_service.dart';
 
@@ -13,13 +15,16 @@ import 'common/services/user_service.dart';
 
 // --- PANTALLAS ---
 import 'features/client_home/main_layout_screen.dart';
-import 'features/coach_home/coach_home_screen.dart';
+// import 'features/coach_home/coach_home_screen.dart'; // (Opcional si usas el layout)
 import 'features/coach_home/trainer_main_layout.dart';
-import 'features/clients/clients_page.dart';
+import 'features/clients/clients_page.dart'; // (Si lo usas dentro del layout)
 import 'features/admin/admin_home_screen.dart';
 
+// 3. TU NUEVA PANTALLA DE PAGO
+import 'features/subscription/paywall_screen.dart';
+
 Future<void> main() async {
-  // 1. Aseguramos binding y preservamos el Splash Nativo
+  // Aseguramos binding y preservamos el Splash Nativo
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
@@ -37,7 +42,7 @@ Future<void> main() async {
 
   await Supabase.initialize(url: supaUrl, anonKey: supaAnon);
 
-  // 🔥 NUEVO: Inicializamos Firebase antes de correr la app
+  // Inicializamos Firebase
   try {
     await Firebase.initializeApp();
     debugPrint('🔥 Firebase inicializado correctamente');
@@ -45,10 +50,29 @@ Future<void> main() async {
     debugPrint('⚠️ Error inicializando Firebase: $e');
   }
 
-  // 2. Quitamos el Splash nativo cuando todo esté listo
+  // 4. Inicializamos RevenueCat
+  await initRevenueCat();
+
+  // Quitamos el Splash nativo cuando todo esté listo
   FlutterNativeSplash.remove();
 
   runApp(const EntrenadorApp());
+}
+
+// Función de configuración de RevenueCat
+Future<void> initRevenueCat() async {
+  await Purchases.setLogLevel(
+    LogLevel.debug,
+  ); // Útil para ver errores en consola
+
+  if (Platform.isAndroid) {
+    // Tu API Key Pública de RevenueCat (La que copiaste)
+    await Purchases.configure(
+      PurchasesConfiguration("goog_caqHxYLljhHYkEEKRbjcusOUdse"),
+    );
+  }
+  // Si tuvieras iOS:
+  // else if (Platform.isIOS) { ... }
 }
 
 class EntrenadorApp extends StatelessWidget {
@@ -65,6 +89,8 @@ class EntrenadorApp extends StatelessWidget {
       title: 'Entrenador',
       debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.dark,
+      // Definimos rutas para facilitar la navegación desde el Paywall
+      routes: {'/home': (context) => const RootWrapper()},
       darkTheme: ThemeData(
         brightness: Brightness.dark,
         useMaterial3: true,
@@ -120,23 +146,26 @@ class EntrenadorApp extends StatelessWidget {
   }
 }
 
-// --- Wrapper que decide si mostramos Login o App ---
 class RootWrapper extends StatelessWidget {
   const RootWrapper({super.key});
 
   @override
   Widget build(BuildContext context) {
     final session = Supabase.instance.client.auth.currentSession;
-
     if (session == null) {
       return const OnboardingPage();
     }
-
     return const AuthGate();
   }
 }
 
-// --- Gate que decide qué pantalla mostrar según el ROL ---
+// Clase auxiliar para devolver varios datos a la vez
+class UserStatus {
+  final String? role;
+  final bool isPro;
+  UserStatus({required this.role, required this.isPro});
+}
+
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
   @override
@@ -153,10 +182,6 @@ class _AuthGateState extends State<AuthGate> {
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((state) {
       if (mounted) setState(() {});
     });
-
-    // 🔥 NUEVO: Iniciamos el servicio de notificaciones AQUÍ.
-    // Lo hacemos en el AuthGate porque aquí ya sabemos que el usuario
-    // está logueado, por lo que podemos guardar su token en la BD.
     NotificationService().init();
   }
 
@@ -166,77 +191,36 @@ class _AuthGateState extends State<AuthGate> {
     super.dispose();
   }
 
-  Future<String?> _initializeAndGetRole() async {
+  // 5. LÓGICA CENTRAL: Obtenemos Rol y Estado de Suscripción
+  Future<UserStatus> _checkUserStatus() async {
+    debugPrint("🔍 INICIANDO CHEQUEO DE USUARIO...");
+    // A. Asegurar perfil en Supabase
     await _ensureProfileClient();
-    return await _userSrv.getRole();
-  }
 
-  @override
-  Widget build(BuildContext context) {
-    final session = Supabase.instance.client.auth.currentSession;
-    if (session == null) return const LoginPage();
+    // B. Obtener Rol
+    final role = await _userSrv.getRole();
+    debugPrint("👤 ROL DETECTADO: $role");
 
-    return FutureBuilder<String?>(
-      future: _initializeAndGetRole(),
-      builder: (context, snap) {
-        if (snap.connectionState != ConnectionState.done) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+    // C. Verificar Suscripción en RevenueCat
+    bool isPro = false;
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId != null) {
+        // Identificamos al usuario en RevenueCat
+        await Purchases.logIn(userId);
+
+        // Preguntamos si tiene el "Entitlement" activo
+        final customerInfo = await Purchases.getCustomerInfo();
+        if (customerInfo.entitlements.all["pro_access"]?.isActive == true) {
+          isPro = true;
         }
+      }
+    } catch (e) {
+      debugPrint("⚠️ Error verificando suscripción: $e");
+      // Si falla, por seguridad asume false (bloquea acceso)
+    }
 
-        if (snap.hasError || !snap.hasData) {
-          return Scaffold(
-            appBar: AppBar(title: const Text('Resolviendo rol')),
-            body: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.error_outline,
-                      size: 48,
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'No pude determinar tu rol.\n${snap.error ?? ''}',
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        FilledButton.icon(
-                          onPressed: () => setState(() {}),
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('Reintentar'),
-                        ),
-                        const SizedBox(width: 8),
-                        OutlinedButton.icon(
-                          onPressed: () async {
-                            await Supabase.instance.client.auth.signOut();
-                          },
-                          icon: const Icon(Icons.logout),
-                          label: const Text('Cerrar sesión'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        }
-
-        final role = snap.data;
-
-        if (role == 'admin') return const AdminHomeScreen();
-        if (role == 'coach') return const TrainerMainLayout();
-        return const MainLayoutScreen();
-      },
-    );
+    return UserStatus(role: role, isPro: isPro);
   }
 
   Future<void> _ensureProfileClient() async {
@@ -264,7 +248,94 @@ class _AuthGateState extends State<AuthGate> {
       debugPrint('Error asegurando perfil: $e');
     }
   }
+
+  @override
+  Widget build(BuildContext context) {
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session == null) return const LoginPage();
+
+    return FutureBuilder<UserStatus>(
+      future: _checkUserStatus(), // Llamamos a la nueva lógica
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (snap.hasError || !snap.hasData) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Error de acceso')),
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.error_outline,
+                      size: 48,
+                      color: Colors.red,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'No pudimos cargar tu perfil.\n${snap.error ?? ''}',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: () => setState(() {}),
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Reintentar'),
+                        ),
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          onPressed: () =>
+                              Supabase.instance.client.auth.signOut(),
+                          icon: const Icon(Icons.logout),
+                          label: const Text('Cerrar sesión'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        final status = snap.data!;
+        final role = status.role;
+        final isPro = status.isPro;
+
+        // --- ENRUTAMIENTO ---
+
+        if (role == 'admin') {
+          return const AdminHomeScreen();
+        }
+
+        if (role == 'coach') {
+          // 6. EL MURO DE PAGO (SOLO PARA COACHES)
+          if (isPro) {
+            return const TrainerMainLayout(); // ✅ Pagó -> Entra
+          } else {
+            return const PaywallScreen(); // ❌ No pagó -> Pantalla de pago
+          }
+        }
+
+        // Clientes (Asumimos que entran directo)
+        return const MainLayoutScreen();
+      },
+    );
+  }
 }
+
+// ---------------------------------------------------------
+//        AQUÍ ABAJO ESTÁ TU LOGIN Y ONBOARDING ORIGINAL
+// ---------------------------------------------------------
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -390,11 +461,10 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ),
                 ),
-                // 🔥 Mantengo tu corrección visual anterior:
                 AnimatedPositioned(
                   duration: const Duration(milliseconds: 300),
                   left: 24,
-                  right: 24, // <-- ESTO EVITA QUE EL TEXTO SE SALGA
+                  right: 24,
                   bottom: isKeyboardOpen ? 20 : 100,
                   child: AnimatedOpacity(
                     duration: const Duration(milliseconds: 200),
@@ -516,8 +586,6 @@ class _LoginPageState extends State<LoginPage> {
   }
 }
 
-// ... (El resto de clases OnboardingPage y demás se mantienen igual) ...
-// Inclúyelas tal cual las tenías abajo del código.
 class OnboardingPage extends StatefulWidget {
   const OnboardingPage({super.key});
 

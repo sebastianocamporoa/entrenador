@@ -2,7 +2,7 @@ name: entrenador
 description: "A new Flutter project."
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.0.0+7
 
 environment:
   sdk: ^3.9.2
@@ -31,6 +31,8 @@ dependencies:
   http: ^1.2.0
   open_filex: ^4.7.0
   fl_chart: ^0.66.0
+  purchases_flutter: ^9.10.6
+  purchases_ui_flutter: ^9.10.6
 
 dev_dependencies:
   flutter_test:
