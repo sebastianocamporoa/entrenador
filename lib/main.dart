@@ -66,13 +66,14 @@ Future<void> initRevenueCat() async {
   ); // Útil para ver errores en consola
 
   if (Platform.isAndroid) {
-    // Tu API Key Pública de RevenueCat (La que copiaste)
     await Purchases.configure(
       PurchasesConfiguration("goog_caqHxYLljhHYkEEKRbjcusOUdse"),
     );
+  } else if (Platform.isIOS) {
+    await Purchases.configure(
+      PurchasesConfiguration("appl_IFUnnbWEqPrfltVUGkjfMMwVcgp"),
+    );
   }
-  // Si tuvieras iOS:
-  // else if (Platform.isIOS) { ... }
 }
 
 class EntrenadorApp extends StatelessWidget {
