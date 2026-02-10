@@ -2,7 +2,8 @@ name: entrenador
 description: "A new Flutter project."
 publish_to: 'none'
 
-version: 1.0.0+7
+# CAMBIO 1: Incrementé la versión para el nuevo build
+version: 1.0.0+8
 
 environment:
   sdk: ^3.9.2
@@ -10,12 +11,13 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  
   # --- FIREBASE ---
   firebase_core: ^3.1.0      
   firebase_messaging: ^15.0.1
 
+  # --- UI & UTILIDADES ---
   cupertino_icons: ^1.0.8
-  supabase_flutter: ^2.5.2
   flutter_riverpod: ^3.0.2
   go_router: ^16.2.4
   intl: ^0.20.2
@@ -23,14 +25,16 @@ dependencies:
   image_picker: ^1.2.0
   table_calendar: ^3.0.9
   syncfusion_flutter_calendar: ^31.2.4
-  # Agregamos url_launcher aquí porque lo usamos en el código anterior
   url_launcher: ^6.3.0 
   pdf: ^3.10.0
   path_provider: ^2.1.2
-  #open_file: ^3.3.2
   http: ^1.2.0
   open_filex: ^4.7.0
   fl_chart: ^0.66.0
+
+  # --- BACKEND & PAGOS ---
+  supabase_flutter: ^2.5.2
+  # Veo que usas RevenueCat, esto es clave para responderle a Apple sobre tu modelo de negocio
   purchases_flutter: ^9.10.6
   purchases_ui_flutter: ^9.10.6
 
@@ -38,10 +42,12 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   
-  # Aquí se define la versión de la librería (con indentación)
+  # --- HERRAMIENTAS DE GENERACIÓN ---
   flutter_native_splash: ^2.3.10
   flutter_lints: ^5.0.0
   build_runner: ^2.9.0
+  # CAMBIO 2: Agregada librería para generar los iconos reales
+  flutter_launcher_icons: ^0.13.1
 
 # CONFIGURACIÓN DE FLUTTER
 flutter:
@@ -49,8 +55,7 @@ flutter:
   assets:
     - assets/
 
-# CONFIGURACIÓN DE LA SPLASH SCREEN
-# Esta sección va al nivel raíz (sin espacios a la izquierda), separada de dev_dependencies
+# --- CONFIGURACIÓN DE SPLASH SCREEN ---
 flutter_native_splash:
   color: "#1C1C1E"
   image: assets/logo.png
@@ -58,3 +63,11 @@ flutter_native_splash:
   android_12:
     image: assets/logo.png
     color: "#1C1C1E"
+
+# --- CONFIGURACIÓN DE ICONOS (NUEVO) ---
+# CAMBIO 3: Esto generará los iconos para iOS y Android automáticamente
+flutter_icons:
+  android: true
+  ios: true
+  image_path: "assets/logo.png" # Usará tu mismo logo
+  remove_alpha_ios: true        # Quita la transparencia para cumplir normas de Apple
