@@ -1,12 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-// 🔥 CAMBIO 1: Importamos la nueva pantalla con calendario
 import 'client_home_screen.dart';
-
-// Ya no necesitamos importar TodayWorkoutScreen aquí, porque ClientHomeScreen la llamará por dentro
-// import 'today_workout_screen.dart';
-
 import '../statistics/statistics_screen.dart';
 import '../profile/profile_screen.dart';
 import '../client_onboarding/client_onboarding_wizard.dart';
@@ -22,18 +17,11 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
   int _currentIndex = 0;
   final SupabaseClient _supabase = Supabase.instance.client;
 
+  // 🔥 LISTA ACTUALIZADA: Solo 3 pantallas
   late final List<Widget> _pages = [
-    // 🔥 CAMBIO 2: Aquí ponemos la pantalla nueva
-    const ClientHomeScreen(),
-
-    const StatisticsScreen(),
-    const Center(
-      child: Text(
-        'Notificaciones (Próximamente)',
-        style: TextStyle(color: Colors.white),
-      ),
-    ),
-    const ProfileScreen(),
+    const ClientHomeScreen(), // Índice 0
+    const StatisticsScreen(), // Índice 1
+    const ProfileScreen(), // Índice 2 (antes era 3)
   ];
 
   @override
@@ -97,7 +85,6 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
 
     return Scaffold(
       backgroundColor: backgroundColor,
-      // Aquí se carga la página correspondiente según el índice
       body: _pages[_currentIndex],
       bottomNavigationBar: Container(
         height: 80,
@@ -124,10 +111,12 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
                 isSelected: _currentIndex == 1,
                 primaryColor: primaryColor,
               ),
-              _buildNotificationItem(index: 2, isSelected: _currentIndex == 2),
+              // 🔥 ELIMINADO: _buildNotificationItem ya no existe aquí
+
+              // 🔥 ACTUALIZADO: El índice de perfil ahora es 2
               _buildProfileItem(
-                index: 3,
-                isSelected: _currentIndex == 3,
+                index: 2,
+                isSelected: _currentIndex == 2,
                 primaryColor: primaryColor,
               ),
             ],
@@ -153,37 +142,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
     );
   }
 
-  Widget _buildNotificationItem({
-    required int index,
-    required bool isSelected,
-  }) {
-    return Stack(
-      alignment: Alignment.topRight,
-      children: [
-        IconButton(
-          onPressed: () => setState(() => _currentIndex = index),
-          icon: Icon(
-            Icons.notifications_rounded,
-            size: 28,
-            color: isSelected ? Colors.white : Colors.white24,
-          ),
-        ),
-        Positioned(
-          top: 10,
-          right: 10,
-          child: Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(
-              color: const Color(0xFFD946EF),
-              shape: BoxShape.circle,
-              border: Border.all(color: const Color(0xFF1E1E1E), width: 2),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+  // 🔥 ELIMINADO: La función _buildNotificationItem fue borrada completamente.
 
   Widget _buildProfileItem({
     required int index,

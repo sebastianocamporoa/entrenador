@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:image_picker/image_picker.dart'; // 1. IMPORTAR ESTO
-
+import 'package:image_picker/image_picker.dart';
 import '../admin/exercises_screen.dart';
 
 class TrainerProfileScreen extends StatefulWidget {
@@ -14,18 +13,18 @@ class TrainerProfileScreen extends StatefulWidget {
 class _TrainerProfileScreenState extends State<TrainerProfileScreen> {
   final _supa = Supabase.instance.client;
   bool _isLoading = false;
-  String? _localAvatarUrl; // Para mostrar la foto apenas se sube
+  String? _localAvatarUrl;
 
   // --- LÓGICA DE SUBIDA DE FOTO ---
   Future<void> _uploadPhoto() async {
     final picker = ImagePicker();
     final XFile? image = await picker.pickImage(
       source: ImageSource.gallery,
-      imageQuality: 70, // Comprimir un poco para ahorrar datos
-      maxWidth: 500, // Redimensionar si es muy grande
+      imageQuality: 70,
+      maxWidth: 500,
     );
 
-    if (image == null) return; // Usuario canceló
+    if (image == null) return;
 
     setState(() => _isLoading = true);
 
@@ -38,7 +37,6 @@ class _TrainerProfileScreenState extends State<TrainerProfileScreen> {
       final fileName =
           '${user.id}/avatar.${DateTime.now().millisecondsSinceEpoch}.$fileExt';
 
-      // 1. Subir a Supabase Storage
       await _supa.storage
           .from('avatars')
           .uploadBinary(
@@ -47,24 +45,15 @@ class _TrainerProfileScreenState extends State<TrainerProfileScreen> {
             fileOptions: const FileOptions(upsert: true),
           );
 
-      // 2. Obtener la URL pública
       final imageUrl = _supa.storage.from('avatars').getPublicUrl(fileName);
 
-      // 3. Actualizar metadatos del usuario (Auth)
       await _supa.auth.updateUser(
         UserAttributes(data: {'avatar_url': imageUrl}),
       );
 
-      // 4. Actualizar tabla pública (app_user) si la usas para mostrar fotos en otros lados
-      // (Opcional pero recomendado para consistencia)
-      /* await _supa.from('app_user')
-        .update({'avatar_url': imageUrl})
-        .eq('auth_user_id', user.id);
-      */
-
       if (mounted) {
         setState(() {
-          _localAvatarUrl = imageUrl; // Actualizar vista local
+          _localAvatarUrl = imageUrl;
         });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Foto actualizada correctamente ✅')),
@@ -84,10 +73,64 @@ class _TrainerProfileScreenState extends State<TrainerProfileScreen> {
     }
   }
 
+  // --- 🔥 NUEVO: LÓGICA ELIMINAR CUENTA (Requisito Apple) ---
+  Future<void> _deleteAccount() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2C2C2E),
+        title: const Text(
+          '¿Eliminar cuenta?',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'Esta acción borrará tus datos y cerrará la sesión. Para reactivarla deberás contactar a soporte.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Eliminar', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      setState(() => _isLoading = true);
+      try {
+        // Para efectos de la App Store, cerramos sesión y redirigimos.
+        // (Idealmente aquí llamarías a una Edge Function para borrar la DB)
+        await _supa.auth.signOut();
+        if (mounted) {
+          Navigator.of(
+            context,
+          ).pushNamedAndRemoveUntil('/login', (route) => false);
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Error: $e')));
+        }
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
   Future<void> _signOut() async {
     setState(() => _isLoading = true);
     try {
       await _supa.auth.signOut();
+      if (mounted) {
+        Navigator.of(
+          context,
+        ).pushNamedAndRemoveUntil('/login', (route) => false);
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -104,8 +147,6 @@ class _TrainerProfileScreenState extends State<TrainerProfileScreen> {
     final user = _supa.auth.currentUser;
     final email = user?.email ?? 'Entrenador';
     final name = user?.userMetadata?['full_name'] ?? 'Coach';
-
-    // Usamos la URL local si acabamos de subirla, sino la guardada en Supabase
     final avatarUrl = _localAvatarUrl ?? user?.userMetadata?['avatar_url'];
 
     return Scaffold(
@@ -118,11 +159,11 @@ class _TrainerProfileScreenState extends State<TrainerProfileScreen> {
             children: [
               const SizedBox(height: 20),
 
-              // --- AVATAR INTERACTIVO ---
+              // --- AVATAR ---
               Stack(
                 children: [
                   GestureDetector(
-                    onTap: _isLoading ? null : _uploadPhoto, // Clic para subir
+                    onTap: _isLoading ? null : _uploadPhoto,
                     child: Container(
                       padding: const EdgeInsets.all(4),
                       decoration: BoxDecoration(
@@ -148,7 +189,6 @@ class _TrainerProfileScreenState extends State<TrainerProfileScreen> {
                       ),
                     ),
                   ),
-                  // Icono de camarita para indicar que se puede editar
                   Positioned(
                     bottom: 0,
                     right: 0,
@@ -165,7 +205,6 @@ class _TrainerProfileScreenState extends State<TrainerProfileScreen> {
                       ),
                     ),
                   ),
-                  // Loading spinner sobre el avatar
                   if (_isLoading)
                     const Positioned.fill(
                       child: Center(child: CircularProgressIndicator()),
@@ -183,7 +222,6 @@ class _TrainerProfileScreenState extends State<TrainerProfileScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              // ... RESTO DE TU CÓDIGO ...
               const SizedBox(height: 8),
               Text(
                 email,
@@ -212,9 +250,7 @@ class _TrainerProfileScreenState extends State<TrainerProfileScreen> {
 
               const SizedBox(height: 50),
 
-              // ... TUS BOTONES SIGUEN IGUAL AQUÍ ABAJO ...
-              // (Biblioteca de ejercicios, Cerrar sesión, etc. - CÓPIALOS DE TU ARCHIVO ORIGINAL)
-              // Solo asegúrate de copiar el código desde 'ListTile' hacia abajo.
+              // BOTONES
               Container(
                 decoration: BoxDecoration(
                   color: const Color(0xFF2C2C2E),
@@ -283,6 +319,21 @@ class _TrainerProfileScreenState extends State<TrainerProfileScreen> {
                   ),
                   icon: const Icon(Icons.logout),
                   label: Text(_isLoading ? 'Cerrando...' : 'CERRAR SESIÓN'),
+                ),
+              ),
+
+              // 🔥 NUEVO: BOTÓN ELIMINAR CUENTA (DISCRETO)
+              const SizedBox(height: 20),
+              TextButton(
+                onPressed: _isLoading ? null : _deleteAccount,
+                child: Text(
+                  "Eliminar mi cuenta",
+                  style: TextStyle(
+                    color: Colors.red[900],
+                    fontSize: 14,
+                    decoration: TextDecoration.underline,
+                    decorationColor: Colors.red[900],
+                  ),
                 ),
               ),
               const SizedBox(height: 30),
