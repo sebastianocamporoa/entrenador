@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 // Ajusta la ruta a tu servicio
 import '../../common/services/diet_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class StatisticsScreen extends StatefulWidget {
   const StatisticsScreen({super.key});
@@ -304,6 +305,50 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                           borderRadius: BorderRadius.circular(30),
                         ),
                       ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // 🔥 NUEVO: AVISO MÉDICO PARA EL CLIENTE (Guideline 1.4.1)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.black26,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.white10),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "Aviso Importante",
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white70,
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          "Los planes nutricionales son generados como guías referenciales. Consulte a un médico antes de iniciar cualquier cambio en su dieta.",
+                          style: TextStyle(color: Colors.white54, fontSize: 11),
+                        ),
+                        const SizedBox(height: 6),
+                        GestureDetector(
+                          onTap: () => launchUrl(
+                            Uri.parse('https://www.dietaryguidelines.gov/'),
+                          ),
+                          child: const Text(
+                            "Fuente: USDA Dietary Guidelines",
+                            style: TextStyle(
+                              color: Colors.blueAccent,
+                              fontSize: 11,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],

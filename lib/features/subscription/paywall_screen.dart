@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'; // Para cerrar sesión
+import 'package:url_launcher/url_launcher.dart'; // 🔥 1. IMPORTANTE: Agregar url_launcher
 
 class PaywallScreen extends StatefulWidget {
   const PaywallScreen({super.key});
@@ -42,11 +43,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // CORRECCIÓN: Usamos 'var' porque la librería ahora devuelve un 'PurchaseResult'
       var result = await Purchases.purchasePackage(_monthlyPackage!);
 
       // Extraemos la información del cliente desde el resultado
-      // (Nota: Si 'customerInfo' te marca error, prueba con 'result.purchaserInfo')
       CustomerInfo customerInfo = result.customerInfo;
 
       // Verificamos si la compra desbloqueó el acceso
@@ -144,7 +143,11 @@ class _PaywallScreenState extends State<PaywallScreen> {
               TextButton(
                 onPressed: () async {
                   await Supabase.instance.client.auth.signOut();
-                  // Redirigir al Login...
+                  if (mounted) {
+                    Navigator.of(
+                      context,
+                    ).pushNamedAndRemoveUntil('/login', (route) => false);
+                  }
                 },
                 child: const Text(
                   "Cerrar sesión",
@@ -152,9 +155,35 @@ class _PaywallScreenState extends State<PaywallScreen> {
                 ),
               ),
               const Spacer(),
-              const Text(
-                "Términos de uso • Política de Privacidad",
-                style: TextStyle(fontSize: 12, color: Colors.grey),
+
+              // 🔥 2. CORRECCIÓN: ENLACES LEGALES FUNCIONALES (Guideline 3.1.2)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  TextButton(
+                    onPressed: () => launchUrl(
+                      Uri.parse(
+                        'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/',
+                      ),
+                    ),
+                    child: const Text(
+                      "Términos de Uso",
+                      style: TextStyle(fontSize: 12, color: Colors.blue),
+                    ),
+                  ),
+                  const Text("•", style: TextStyle(color: Colors.grey)),
+                  TextButton(
+                    onPressed: () => launchUrl(
+                      Uri.parse(
+                        'https://sites.google.com/view/omnifit-privacidad/inicio',
+                      ),
+                    ),
+                    child: const Text(
+                      "Política de Privacidad",
+                      style: TextStyle(fontSize: 12, color: Colors.blue),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

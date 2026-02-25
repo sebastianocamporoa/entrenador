@@ -11,6 +11,7 @@ import 'package:intl/intl.dart';
 import '../../common/services/diet_service.dart';
 import '../../common/data/models/training_session.dart';
 import '../../common/data/repositories/training_sessions_repo.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ClientDetailPage extends StatelessWidget {
   final Map<String, dynamic> client;
@@ -1228,6 +1229,51 @@ class _DietTabState extends State<_DietTab> {
               ),
             ),
           ),
+
+          const SizedBox(height: 20),
+
+          // 🔥 NUEVO: AVISO MÉDICO OBLIGATORIO (Guideline 1.4.1)
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.grey[900],
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.grey[800]!),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "AVISO MÉDICO IMPORTANTE",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  "Las recomendaciones generadas por la IA se basan en fórmulas estándar (ej. Harris-Benedict). Esta información es referencial y no sustituye el diagnóstico o tratamiento de un profesional de la salud.",
+                  style: TextStyle(color: Colors.white70, fontSize: 11),
+                ),
+                const SizedBox(height: 8),
+                GestureDetector(
+                  onTap: () => launchUrl(
+                    Uri.parse('https://www.dietaryguidelines.gov/'),
+                  ),
+                  child: const Text(
+                    "Fuente referencial: USDA Dietary Guidelines",
+                    style: TextStyle(
+                      color: Colors.blue,
+                      fontSize: 11,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 30),
         ],
       ),
     );
