@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
+import 'firebase_options.dart';
 
 // 2. RevenueCat y Firebase
 import 'package:purchases_flutter/purchases_flutter.dart';
@@ -44,7 +45,10 @@ Future<void> main() async {
 
   // Inicializamos Firebase
   try {
-    await Firebase.initializeApp();
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions
+          .currentPlatform, // 🔥 ESTO CONECTA TU APP CON IOS/ANDROID
+    );
     debugPrint('🔥 Firebase inicializado correctamente');
   } catch (e) {
     debugPrint('⚠️ Error inicializando Firebase: $e');
