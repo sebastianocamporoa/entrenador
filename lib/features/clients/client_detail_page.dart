@@ -962,6 +962,9 @@ class _DietTabState extends State<_DietTab> {
   bool _hasExistingDiet = false;
   String? _lastDietDate;
 
+  // 🔥 1. VARIABLE PARA CONSENTIMIENTO DE APPLE (Guidelines 5.1.1 y 5.1.2)
+  bool _aiConsentGiven = false;
+
   @override
   void initState() {
     super.initState();
@@ -1020,6 +1023,19 @@ class _DietTabState extends State<_DietTab> {
   }
 
   Future<void> _generateDiet() async {
+    // 🔥 2. VALIDACIÓN OBLIGATORIA DEL CHECKBOX PARA APPLE
+    if (!_aiConsentGiven) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Debes aceptar compartir los datos con la IA para continuar.',
+          ),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
     if (_weightCtrl.text.isEmpty ||
         _heightCtrl.text.isEmpty ||
         _ageCtrl.text.isEmpty ||
@@ -1208,6 +1224,45 @@ class _DietTabState extends State<_DietTab> {
 
           const SizedBox(height: 30),
 
+          // 🔥 3. CHECKBOX DE CONSENTIMIENTO DE PRIVACIDAD
+          Container(
+            margin: const EdgeInsets.only(bottom: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.black26,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: _aiConsentGiven
+                    ? const Color(0xFFBF5AF2).withOpacity(0.5)
+                    : Colors.redAccent.withOpacity(0.5),
+              ),
+            ),
+            child: CheckboxListTile(
+              value: _aiConsentGiven,
+              onChanged: (val) {
+                setState(() {
+                  _aiConsentGiven = val ?? false;
+                });
+              },
+              title: const Text(
+                "Consentimiento de Privacidad",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              subtitle: const Text(
+                "Autorizo compartir edad, peso, altura y objetivo con OpenAI para generar la dieta. No se comparte identidad ni información de contacto.",
+                style: TextStyle(color: Colors.white70, fontSize: 11),
+              ),
+              activeColor: const Color(0xFFBF5AF2),
+              checkColor: Colors.white,
+              controlAffinity: ListTileControlAffinity.leading,
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+
           SizedBox(
             width: double.infinity,
             height: 50,
@@ -1232,7 +1287,7 @@ class _DietTabState extends State<_DietTab> {
 
           const SizedBox(height: 20),
 
-          // 🔥 NUEVO: AVISO MÉDICO OBLIGATORIO (Guideline 1.4.1)
+          // AVISO MÉDICO OBLIGATORIO (Guideline 1.4.1)
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
